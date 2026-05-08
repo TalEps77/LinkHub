@@ -40,11 +40,11 @@ all required PRDs are marked ✅ Done.
 | 02 | ✅ | Menu Bar Integration | `docs/02-menubar-integration.md` | `NSStatusItem` lifecycle, `NSMenu` vs. custom `NSPanel` popover approach, icon asset pipeline (SF Symbols vs. custom assets), icon-swap trigger contract (Wi-Fi ↔ Ethernet), accessibility labels |
 | 03 | ✅ | Network Detection & Observation | `docs/03-network-detection.md` | Frameworks for detection (`CoreWLAN` for Wi-Fi, `SystemConfiguration`/`SCDynamicStore` for Ethernet), interface enumeration strategy, polling vs. push notifications, event debounce, edge cases (multiple adapters, USB-C dongles, VPNs) |
 | 04 | ✅ | Panel UI Architecture | `docs/04-panel-ui-architecture.md` | Technology choice (SwiftUI in `NSPanel`/`NSPopover` vs. AppKit), panel sizing, section layout contract (Ethernet on top, Wi-Fi below), dark/light mode, open/close animations |
-| 05 | ⬜ | Ethernet Status & Controls | `docs/05-ethernet-controls.md` | Info displayed per interface (IP, link speed, status), controls exposed (toggle, open Network Settings), multiple adapter handling, refresh cadence, empty/error states |
-| 06 | ⬜ | Wi-Fi Network Management | `docs/06-wifi-management.md` | Scanning cadence, network list fields (SSID, signal, security), connect/disconnect/forget flows, password prompt + Keychain, hidden networks, captive portals, error messaging, `CoreWLAN` API surface |
-| 07 | ⬜ | State & Data Management | `docs/07-state-data-management.md` | Central state model design, concurrency model (MainActor/Combine/async-await), how network services publish into shared state, persistence needs (preferences), memory/CPU budget for a persistent menu bar app |
-| 08 | ⬜ | Permissions, Entitlements & Privacy | `docs/08-permissions-entitlements.md` | Required entitlements, location permission for Wi-Fi scanning (macOS 10.15+), sandbox vs. hardened runtime trade-offs, `Info.plist` keys, first-launch permission UX |
-| 09 | ⬜ | Distribution & Release | `docs/09-distribution-release.md` | Distribution channel (Mac App Store vs. direct), code signing (Developer ID vs. Mac Distribution), notarization workflow, Sparkle auto-update, versioning scheme, release checklist |
+| 05 | ✅ | Ethernet Status & Controls | `docs/05-ethernet-controls.md` | Info displayed per interface (IP, link speed, status), controls exposed (toggle, open Network Settings), multiple adapter handling, refresh cadence, empty/error states |
+| 06 | ✅ | Wi-Fi Network Management | `docs/06-wifi-management.md` | Scanning cadence, network list fields (SSID, signal, security), connect/disconnect/forget flows, password prompt + Keychain, hidden networks, captive portals, error messaging, `CoreWLAN` API surface |
+| 07 | ✅ | State & Data Management | `docs/07-state-data-management.md` | Central state model design, concurrency model (MainActor/Combine/async-await), how network services publish into shared state, persistence needs (preferences), memory/CPU budget for a persistent menu bar app |
+| 08 | ✅ | Permissions, Entitlements & Privacy | `docs/08-permissions-entitlements.md` | Required entitlements, location permission for Wi-Fi scanning (macOS 10.15+), sandbox vs. hardened runtime trade-offs, `Info.plist` keys, first-launch permission UX |
+| 09 | ✅ | Distribution & Release | `docs/09-distribution-release.md` | Distribution channel (Mac App Store vs. direct), code signing (Developer ID vs. Mac Distribution), notarization workflow, Sparkle auto-update, versioning scheme, release checklist |
 
 ---
 
@@ -85,7 +85,7 @@ Before marking a PRD ✅, confirm it covers:
 | Phase | PRDs | Status |
 |-------|------|--------|
 | Foundation | 01, 02, 03 | ✅ ✅ ✅ |
-| Features | 04, 05, 06, 07 | ✅ ⬜ ⬜ ⬜ |
-| Delivery | 08, 09 | ⬜ ⬜ |
+| Features | 04, 05, 06, 07 | ✅ ✅ ✅ ✅ |
+| Delivery | 08, 09 | ✅ ✅ |
 
-**Total: 4 / 9 PRDs complete**
+**Total: 9 / 9 PRDs complete**
