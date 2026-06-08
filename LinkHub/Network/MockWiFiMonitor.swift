@@ -62,12 +62,14 @@ final class MockWiFiMonitor: WiFiMonitorProtocol {
     @Published var isEnabled: Bool = true
     @Published var isHardwareAvailable: Bool = true
     @Published var scanStatus: ScanStatus = .idle
+    @Published var isLocationDenied: Bool = false
 
     var networksPublisher: Published<[WiFiNetwork]>.Publisher { $networks }
     var connectedNetworkPublisher: Published<WiFiNetwork?>.Publisher { $connectedNetwork }
     var isEnabledPublisher: Published<Bool>.Publisher { $isEnabled }
     var isHardwareAvailablePublisher: Published<Bool>.Publisher { $isHardwareAvailable }
     var scanStatusPublisher: Published<ScanStatus>.Publisher { $scanStatus }
+    var isLocationDeniedPublisher: Published<Bool>.Publisher { $isLocationDenied }
 
     init() {
         self.networks = Self.sampleNetworks

@@ -84,6 +84,21 @@ final class PopoverControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testDismissPopoverActionDoesNotCrashWhenNotShown() {
+        // The \.dismissPopover environment action (FR40 — injected for LocationDeniedView) routes
+        // to controller.close(). Closing a never-shown popover must be a safe no-op.
+        let appState = makeAppState()
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        defer { NSStatusBar.system.removeStatusItem(statusItem) }
+        let controller = PopoverController(appState: appState, statusItemButton: statusItem.button)
+        defer { controller.tearDown() }
+
+        controller.close()
+        XCTAssertFalse(controller.isShown)
+        XCTAssertFalse(controller.hasEventMonitor)
+    }
+
+    @MainActor
     func testTriggerScanOnShowFiresRequestScan() {
         // Verifies the FR26 scan-on-show trigger via the #if DEBUG test hook, avoiding the
         // need to mount a real status-bar button with a window. MockWiFiMonitor cycles
@@ -117,12 +132,14 @@ private final class PopoverStubWiFiMonitor: WiFiMonitorProtocol {
     @Published var isEnabled: Bool = true
     @Published var isHardwareAvailable: Bool = true
     @Published var scanStatus: ScanStatus = .idle
+    @Published var isLocationDenied: Bool = false
 
     var networksPublisher: Published<[WiFiNetwork]>.Publisher { $networks }
     var connectedNetworkPublisher: Published<WiFiNetwork?>.Publisher { $connectedNetwork }
     var isEnabledPublisher: Published<Bool>.Publisher { $isEnabled }
     var isHardwareAvailablePublisher: Published<Bool>.Publisher { $isHardwareAvailable }
     var scanStatusPublisher: Published<ScanStatus>.Publisher { $scanStatus }
+    var isLocationDeniedPublisher: Published<Bool>.Publisher { $isLocationDenied }
 
     func start() {}
     func stop() {}

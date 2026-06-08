@@ -53,4 +53,73 @@ final class WiFiSectionTests: XCTestCase {
         let result = WiFiSection.displayedNetworks(from: state(networks: nets, connected: nil))
         XCTAssertEqual(result.others.map(\.id), ["A", "B", "C"])
     }
+
+    // MARK: - contentMode branch selection (Story 1.5)
+
+    func testContentModeLocationDeniedWinsOverEverything() {
+        // Even if a scan is in flight and the list is non-empty, denial replaces the list.
+        let mode = WiFiSection.contentMode(
+            locationDenied: true,
+            isEmpty: false,
+            isScanning: true,
+            isWiFiEnabled: true,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .locationDenied)
+    }
+
+    func testContentModeScanningWhenEmptyAndScanning() {
+        let mode = WiFiSection.contentMode(
+            locationDenied: false,
+            isEmpty: true,
+            isScanning: true,
+            isWiFiEnabled: true,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .scanning)
+    }
+
+    func testContentModeEmptyWhenIdleEnabledAndNoNetworks() {
+        let mode = WiFiSection.contentMode(
+            locationDenied: false,
+            isEmpty: true,
+            isScanning: false,
+            isWiFiEnabled: true,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .empty)
+    }
+
+    func testContentModeListWhenNetworksPresent() {
+        let mode = WiFiSection.contentMode(
+            locationDenied: false,
+            isEmpty: false,
+            isScanning: false,
+            isWiFiEnabled: true,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .list)
+    }
+
+    func testContentModeNotEmptyStateWhenWiFiDisabled() {
+        // Empty + disabled must not show the "no networks found" empty state (Story 1.4 rule);
+        // falls through to .list (the disabled/off copy is Epic 2 territory).
+        let mode = WiFiSection.contentMode(
+            locationDenied: false,
+            isEmpty: true,
+            isScanning: false,
+            isWiFiEnabled: false,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .list)
+    }
+
+    // MARK: - LocationDeniedView Settings deep-link (FR40)
+
+    func testLocationDeniedViewSettingsURL() {
+        XCTAssertEqual(
+            LocationDeniedView.settingsURL.absoluteString,
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices"
+        )
+    }
 }

@@ -1,20 +1,23 @@
 import Foundation
 import Combine
 import CoreWLAN
+import CoreLocation
 
 @MainActor
-final class WiFiMonitor: NSObject, CWEventDelegate, WiFiMonitorProtocol {
+final class WiFiMonitor: NSObject, CWEventDelegate, CLLocationManagerDelegate, WiFiMonitorProtocol {
     @Published private(set) var networks: [WiFiNetwork] = []
     @Published private(set) var connectedNetwork: WiFiNetwork? = nil
     @Published private(set) var isEnabled: Bool = true
     @Published private(set) var isHardwareAvailable: Bool = true
     @Published private(set) var scanStatus: ScanStatus = .idle
+    @Published private(set) var isLocationDenied: Bool = false
 
     var networksPublisher: Published<[WiFiNetwork]>.Publisher { $networks }
     var connectedNetworkPublisher: Published<WiFiNetwork?>.Publisher { $connectedNetwork }
     var isEnabledPublisher: Published<Bool>.Publisher { $isEnabled }
     var isHardwareAvailablePublisher: Published<Bool>.Publisher { $isHardwareAvailable }
     var scanStatusPublisher: Published<ScanStatus>.Publisher { $scanStatus }
+    var isLocationDeniedPublisher: Published<Bool>.Publisher { $isLocationDenied }
 
     private let eventSubject = PassthroughSubject<Void, Never>()
     private var cancellables: Set<AnyCancellable> = []
@@ -23,14 +26,28 @@ final class WiFiMonitor: NSObject, CWEventDelegate, WiFiMonitorProtocol {
     private var isStarted: Bool = false
     private let scanTimeoutNanoseconds: UInt64
 
+    // CoreLocation: macOS 10.15+ requires granted Location access for CoreWLAN scanning to
+    // return results (docs/08). The manager is owned and accessed on MainActor only.
+    private let locationManager = CLLocationManager()
+    /// `true` once `requestWhenInUseAuthorization()` has been issued, so repeat scans do not
+    /// re-request (the system no-ops repeats, but we avoid log/UI noise — docs/08 D5).
+    private var didRequestAuthorization = false
+
     #if DEBUG
     /// Test-only override for the scan body. When set, replaces the real CoreWLAN scan.
     internal var _scanOverride: (@Sendable () async throws -> [WiFiNetwork])? = nil
+    /// Test-only read of the "authorization already requested" guard (FR39). Lets a test assert
+    /// that the first `requestScan()` flips this true exactly once, without a live CLLocationManager.
+    internal var _didRequestAuthorizationForTesting: Bool { didRequestAuthorization }
     #endif
 
     init(scanTimeoutNanoseconds: UInt64 = 5_000_000_000) {
         self.scanTimeoutNanoseconds = scanTimeoutNanoseconds
         super.init()
+        locationManager.delegate = self
+        // Seed from current authorization so a previously-denied state shows the denial view
+        // immediately on launch (before any scan is requested).
+        isLocationDenied = Self.isDenied(locationManager.authorizationStatus)
     }
 
     func start() {
@@ -92,6 +109,13 @@ final class WiFiMonitor: NSObject, CWEventDelegate, WiFiMonitorProtocol {
 
     func requestScan() async {
         guard isStarted else { return }
+        // FR39 / FR42: request Location authorization on first scan (the panel is the
+        // introduction — no modal onboarding). The system no-ops repeat requests; guard so we
+        // request exactly once and avoid log noise.
+        if !didRequestAuthorization {
+            didRequestAuthorization = true
+            locationManager.requestWhenInUseAuthorization()
+        }
         guard !isScanInFlight else { return }
         isScanInFlight = true
         scanStatus = .scanning
@@ -223,6 +247,36 @@ final class WiFiMonitor: NSObject, CWEventDelegate, WiFiMonitorProtocol {
     }
     nonisolated func powerStateDidChangeForWiFiInterface(withName interfaceName: String) {
         Task { @MainActor [weak self] in self?.eventSubject.send(()) }
+    }
+
+    // MARK: - CLLocationManagerDelegate
+
+    /// Pure mapping of an authorization status to the denial flag. `static` + Sendable input so
+    /// it is trivially unit-testable without a live `CLLocationManager`.
+    static func isDenied(_ status: CLAuthorizationStatus) -> Bool {
+        switch status {
+        case .denied, .restricted:
+            return true
+        default:
+            // .notDetermined / .authorized / .authorizedAlways / .authorizedWhenInUse → not denied.
+            return false
+        }
+    }
+
+    /// Swift 6 marks this delegate method `nonisolated`. The `CLAuthorizationStatus` is captured
+    /// from the manager on MainActor (the manager is MainActor-owned), so we hop first, then read.
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let denied = Self.isDenied(self.locationManager.authorizationStatus)
+            let wasDenied = self.isLocationDenied
+            if self.isLocationDenied != denied { self.isLocationDenied = denied }
+            // FR41: denied → granted while running auto-retries the scan so the panel
+            // transitions from the denial view to the list without an app restart.
+            if wasDenied && !denied && self.isStarted {
+                Task { @MainActor [weak self] in await self?.requestScan() }
+            }
+        }
     }
 }
 

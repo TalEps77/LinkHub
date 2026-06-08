@@ -21,6 +21,12 @@ protocol WiFiMonitorProtocol: AnyObject {
     var scanStatus: ScanStatus { get }
     var scanStatusPublisher: Published<ScanStatus>.Publisher { get }
 
+    /// `true` when CoreLocation authorization is `.denied` / `.restricted`. Exposed as a plain
+    /// `Bool` so no CoreLocation type crosses the protocol boundary (Story 1.5). The real
+    /// monitor drives it from `CLLocationManager`; the mock sets it directly.
+    var isLocationDenied: Bool { get }
+    var isLocationDeniedPublisher: Published<Bool>.Publisher { get }
+
     func start()
     func stop()
     func requestScan() async

@@ -41,11 +41,21 @@ struct WiFiSection: View {
         let displayed = Self.displayedNetworks(from: appState.networkState)
         let isEmpty = (displayed.connected == nil) && displayed.others.isEmpty
         let isScanning = appState.scanStatus == .scanning
-        if isEmpty && isScanning {
+        switch Self.contentMode(
+            locationDenied: appState.wifiLocationDenied,
+            isEmpty: isEmpty,
+            isScanning: isScanning,
+            isWiFiEnabled: appState.networkState.isWiFiEnabled,
+            isWiFiHardwareAvailable: appState.networkState.isWiFiHardwareAvailable
+        ) {
+        case .locationDenied:
+            // UX-DR12 / UX-DR14: Location denial replaces the list entirely.
+            LocationDeniedView()
+        case .scanning:
             scanningIndicator
-        } else if isEmpty && appState.networkState.isWiFiEnabled && appState.networkState.isWiFiHardwareAvailable && !isScanning {
+        case .empty:
             emptyState
-        } else {
+        case .list:
             VStack(spacing: 0) {
                 if let connected = displayed.connected { WiFiRow(network: connected) }
                 ForEach(displayed.others) { network in WiFiRow(network: network) }
@@ -70,6 +80,31 @@ struct WiFiSection: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: PanelLayout.rowHeight * 2, alignment: .center)
+    }
+
+    /// The mutually-exclusive content states the section can display, in priority order.
+    enum ContentMode: Equatable {
+        case locationDenied
+        case scanning
+        case empty
+        case list
+    }
+
+    /// Pure branch selector for `content` — decides which view the section renders. Location
+    /// denial wins over every other state (UX-DR12): without Location access the list can never
+    /// populate, so the scanning / empty / list states are moot. Unit-tested directly without
+    /// instantiating SwiftUI (mirrors `displayedNetworks`).
+    static func contentMode(
+        locationDenied: Bool,
+        isEmpty: Bool,
+        isScanning: Bool,
+        isWiFiEnabled: Bool,
+        isWiFiHardwareAvailable: Bool
+    ) -> ContentMode {
+        if locationDenied { return .locationDenied }
+        if isEmpty && isScanning { return .scanning }
+        if isEmpty && isWiFiEnabled && isWiFiHardwareAvailable && !isScanning { return .empty }
+        return .list
     }
 
     /// Splits `NetworkState` into the connected row and the de-duplicated "other networks"

@@ -1,5 +1,5 @@
 # generated: 2026-05-09
-# last_updated: 2026-06-08 (story 1.4 done; 1.5 next)
+# last_updated: 2026-06-08 (story 1.5 done; 1.6 next)
 # project: LinkHub
 # project_key: NOKEY
 # tracking_system: file-system
@@ -47,7 +47,7 @@ development_status:
   1-2-appstate-statusitemcontroller-and-popover-skeleton: done
   1-3-wifimonitor-on-demand-scan-push-events-scanstatus-timeout: done
   1-4-rootpanelview-wifisection-wifirow-read-only: done
-  1-5-locationdeniedview-cllocationmanager-authorization-flow: backlog
+  1-5-locationdeniedview-cllocationmanager-authorization-flow: done
   1-6-wi-fi-side-voiceover-statusbaricon-and-idle-resource-baseline: backlog
   epic-1-retrospective: optional
 

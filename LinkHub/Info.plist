@@ -26,6 +26,8 @@
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 LinkHub. All rights reserved.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>LinkHub uses your location only to read nearby Wi-Fi network names, which macOS requires for Wi-Fi scanning.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>LinkHub scans for nearby Wi-Fi networks. Apple requires location access for this on macOS 10.15 and later.</string>
     <key>NSPrincipalClass</key>

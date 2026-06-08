@@ -18,10 +18,21 @@ final class PopoverController: NSObject, NSPopoverDelegate {
     init(appState: AppState, statusItemButton: NSStatusBarButton?) {
         self.button = statusItemButton
         self.appState = appState
+        // Hold the dismiss action in a box so the SwiftUI environment closure can reach
+        // `close()` without capturing `self` before super.init (and without a retain cycle —
+        // the box is owned by the hosting controller's view tree, captures `self` weakly).
+        let dismissBox = DismissBox()
         self.hostingController = NSHostingController(
-            rootView: AnyView(RootPanelView().environmentObject(appState))
+            rootView: AnyView(
+                RootPanelView()
+                    .environmentObject(appState)
+                    // FR40: LocationDeniedView's "Open Privacy Settings" dismisses the popover
+                    // via this injected action before opening System Settings.
+                    .environment(\.dismissPopover) { dismissBox.dismiss?() }
+            )
         )
         super.init()
+        dismissBox.dismiss = { [weak self] in self?.close() }
         popover.behavior = .transient
         popover.delegate = self
         hostingController.sizingOptions = [.intrinsicContentSize]
@@ -86,4 +97,12 @@ final class PopoverController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         removeEventMonitor()
     }
+}
+
+/// Late-bound holder for the popover-dismiss action. Lets the SwiftUI environment closure be
+/// captured into the hosting controller's view tree during `init`, then have its target wired
+/// after `super.init()`. The closure captures `self` weakly, so no retain cycle is introduced.
+@MainActor
+private final class DismissBox {
+    var dismiss: (@MainActor () -> Void)?
 }

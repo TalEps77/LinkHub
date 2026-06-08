@@ -136,6 +136,41 @@ final class AppStateTests: XCTestCase {
     }
     #endif
 
+    #if DEBUG
+    @MainActor
+    func testLocationDeniedPropagatesFromMonitor() async {
+        let mock = MockWiFiMonitor()
+        let state = AppState(wifiMonitor: mock)
+        state.startMonitors()
+        defer { state.stopMonitors() }
+
+        XCTAssertFalse(state.wifiLocationDenied)
+
+        mock.isLocationDenied = true
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(state.wifiLocationDenied, "denied flag must propagate to AppState")
+
+        mock.isLocationDenied = false
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(state.wifiLocationDenied, "grant must propagate to AppState")
+    }
+
+    @MainActor
+    func testLocationDeniedSinkSeveredAfterStop() async {
+        let mock = MockWiFiMonitor()
+        let state = AppState(wifiMonitor: mock)
+        state.startMonitors()
+        state.stopMonitors()
+
+        mock.isLocationDenied = true
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(
+            state.wifiLocationDenied,
+            "stopMonitors must sever the isLocationDenied sink so post-stop mutations do not leak"
+        )
+    }
+    #endif
+
     @MainActor
     func testStartMonitorsCallsWiFiMonitorStart() {
         let stub = StubWiFiMonitor()
@@ -153,12 +188,14 @@ private final class StubWiFiMonitor: WiFiMonitorProtocol {
     @Published var isEnabled: Bool = true
     @Published var isHardwareAvailable: Bool = true
     @Published var scanStatus: ScanStatus = .idle
+    @Published var isLocationDenied: Bool = false
 
     var networksPublisher: Published<[WiFiNetwork]>.Publisher { $networks }
     var connectedNetworkPublisher: Published<WiFiNetwork?>.Publisher { $connectedNetwork }
     var isEnabledPublisher: Published<Bool>.Publisher { $isEnabled }
     var isHardwareAvailablePublisher: Published<Bool>.Publisher { $isHardwareAvailable }
     var scanStatusPublisher: Published<ScanStatus>.Publisher { $scanStatus }
+    var isLocationDeniedPublisher: Published<Bool>.Publisher { $isLocationDenied }
 
     var startCallCount = 0
     var stopCallCount = 0

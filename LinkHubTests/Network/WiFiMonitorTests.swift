@@ -1,6 +1,7 @@
 import XCTest
 import Combine
 import CoreWLAN
+import CoreLocation
 @testable import LinkHub
 
 final class WiFiMonitorTests: XCTestCase {
@@ -107,6 +108,25 @@ final class WiFiMonitorTests: XCTestCase {
     }
 
     @MainActor
+    func testFirstScanRequestsAuthorizationExactlyOnce() async throws {
+        try XCTSkipIf(
+            CWWiFiClient.shared().interface() == nil,
+            "requestScan early-returns before start; needs a started monitor to reach the auth request"
+        )
+        let monitor = WiFiMonitor(scanTimeoutNanoseconds: 1_000_000_000)
+        monitor.start()
+        defer { monitor.stop() }
+        monitor._scanOverride = { [] }
+
+        XCTAssertFalse(monitor._didRequestAuthorizationForTesting, "auth not requested before first scan")
+        await monitor.requestScan()
+        XCTAssertTrue(monitor._didRequestAuthorizationForTesting, "first requestScan must request authorization (FR39)")
+        // Second scan must not re-arm the guard (it stays true; the system no-ops repeats).
+        await monitor.requestScan()
+        XCTAssertTrue(monitor._didRequestAuthorizationForTesting)
+    }
+
+    @MainActor
     func testRequestScanIsNoOpBeforeStart() async {
         // Sanity: a stopped (or never-started) monitor must not transition through .scanning.
         let monitor = WiFiMonitor(scanTimeoutNanoseconds: 1_000_000_000)
@@ -132,6 +152,34 @@ final class WiFiMonitorTests: XCTestCase {
         // a misleading "everything fine" emission during teardown.
         XCTAssertFalse(monitor.isEnabled)
         XCTAssertFalse(monitor.isHardwareAvailable)
+    }
+
+    // MARK: - CoreLocation authorization mapping (Story 1.5, AC #2/#4)
+
+    @MainActor
+    func testIsDeniedMapsDeniedAndRestrictedToTrue() {
+        XCTAssertTrue(WiFiMonitor.isDenied(.denied))
+        XCTAssertTrue(WiFiMonitor.isDenied(.restricted))
+    }
+
+    @MainActor
+    func testIsDeniedMapsAuthorizedAndNotDeterminedToFalse() {
+        XCTAssertFalse(WiFiMonitor.isDenied(.notDetermined))
+        XCTAssertFalse(WiFiMonitor.isDenied(.authorizedAlways))
+        #if os(macOS)
+        XCTAssertFalse(WiFiMonitor.isDenied(.authorized))
+        #endif
+        XCTAssertFalse(WiFiMonitor.isDenied(.authorizedWhenInUse))
+    }
+
+    @MainActor
+    func testInitialLocationDeniedReflectsCurrentAuthorizationStatus() {
+        // The monitor seeds isLocationDenied from the live CLLocationManager status at init so a
+        // previously-denied state shows the denial view immediately on launch. We assert the
+        // value agrees with the pure mapping for whatever status the host actually reports.
+        let monitor = WiFiMonitor()
+        let expected = WiFiMonitor.isDenied(CLLocationManager().authorizationStatus)
+        XCTAssertEqual(monitor.isLocationDenied, expected)
     }
 }
 

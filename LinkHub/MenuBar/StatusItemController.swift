@@ -8,6 +8,11 @@ final class StatusItemController {
     private var cancellables: Set<AnyCancellable> = []
     private let popoverController: PopoverController
     private var previousMode: ConnectionMode? = nil
+    private var previousLocationDenied: Bool? = nil
+    /// Armed on a Location denied→granted transition (Story 1.5, UX-DR25). Consumed on the next
+    /// `networkState` emission — i.e. when the auto-retried scan first completes after the grant —
+    /// to post the "Wi-Fi networks loading" VoiceOver announcement.
+    private var announceNetworksLoadingPending: Bool = false
     private let symbolConfig = NSImage.SymbolConfiguration(pointSize: 17, weight: .regular, scale: .medium)
 
     #if DEBUG
@@ -40,6 +45,21 @@ final class StatusItemController {
                 self.updateLabel(for: state)
                 self.updateTooltip(for: state)
                 self.announceIfDisconnected(newMode: state.mode)
+                self.announceNetworksLoadingIfPending()
+            }
+            .store(in: &cancellables)
+
+        // Detect the Location denied→granted edge (Story 1.5). NSAccessibility lives in AppKit,
+        // so the announcement is posted from here (StatusItemController), not from the State or
+        // Network layers, which must not import AppKit. The edge arms a pending flag consumed by
+        // the next networkState emission (the auto-retried scan's first result).
+        appState.$wifiLocationDenied
+            .sink { [weak self] denied in
+                guard let self else { return }
+                if self.previousLocationDenied == true && !denied {
+                    self.announceNetworksLoadingPending = true
+                }
+                self.previousLocationDenied = denied
             }
             .store(in: &cancellables)
     }
@@ -112,6 +132,24 @@ final class StatusItemController {
             }
         }
         previousMode = newMode
+    }
+
+    /// UX-DR25: after the user grants Location following a denial, the next scan completion posts
+    /// a VoiceOver announcement so assistive-tech users perceive the panel transitioning out of
+    /// the denial state. Fires at most once per denied→granted transition.
+    private func announceNetworksLoadingIfPending() {
+        guard announceNetworksLoadingPending else { return }
+        announceNetworksLoadingPending = false
+        if let button = statusItem.button {
+            NSAccessibility.post(
+                element: button,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: "Wi-Fi networks loading",
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue
+                ]
+            )
+        }
     }
 
     @objc private func handleStatusItemClick() {

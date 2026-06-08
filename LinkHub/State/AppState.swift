@@ -43,6 +43,19 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Mirror the monitor's Location-denial flag (Story 1.5). A plain Bool crosses the
+        // protocol boundary — no CoreLocation type reaches the State layer. Stored in
+        // cancellables so stopMonitors() severs it. Equality-guarded write avoids redundant
+        // @Published emissions on repeated same-value pushes.
+        wifiMonitor.isLocationDeniedPublisher
+            .sink { [weak self] denied in
+                Task { @MainActor [weak self] in
+                    guard let self, self.wifiLocationDenied != denied else { return }
+                    self.wifiLocationDenied = denied
+                }
+            }
+            .store(in: &cancellables)
+
         Publishers.CombineLatest4(
             wifiMonitor.networksPublisher,
             wifiMonitor.connectedNetworkPublisher,
