@@ -6,6 +6,10 @@ final class AppState: ObservableObject {
     @Published private(set) var networkState: NetworkState = .empty
     @Published private(set) var connectionMode: ConnectionMode = .disconnected
     @Published private(set) var scanStatus: ScanStatus = .idle
+    /// `id` of the network whose `connect(to:password:)` attempt is currently in flight, or `nil`.
+    /// `WiFiRow` reads this to render its `.connecting` visual (Story 2.3 — no separate spinner).
+    /// Single source of truth so concurrent taps cannot light up two rows at once.
+    @Published private(set) var connectingNetworkID: String?
     @Published var wifiLocationDenied: Bool = false
     @Published var launchAtLogin: Bool {
         didSet {
@@ -85,6 +89,47 @@ final class AppState: ObservableObject {
         wifiMonitor.stop()
         cancellables.removeAll()
         isStarted = false
+    }
+
+    /// Connection orchestration (NFR35 — the View never calls `associate`/Keychain directly).
+    ///
+    /// 1. Associates with `network` via the monitor (`password == nil` → open variant).
+    /// 2. On `.success`, persists the passphrase keyed by SSID — but only when there *is* a
+    ///    non-empty password and a real SSID (hidden / nil-SSID networks have no stable Keychain
+    ///    account here; their persistence is Story 2.4's concern). Persist-only-on-success is the
+    ///    UX-DR31 rule. A Keychain write failure must NOT fail the connection: it is logged and
+    ///    swallowed, and the original `.success` is returned unchanged.
+    /// 3. Returns the monitor's `Result` verbatim so the row can map a failure to its caption.
+    ///
+    /// `connectingNetworkID` is set to `network.id` for the duration of the attempt and cleared in
+    /// a `defer` (covering every exit, including a cancelled task), driving the row's `.connecting`
+    /// visual without a separate spinner.
+    func connect(to network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> {
+        connectingNetworkID = network.id
+        defer { connectingNetworkID = nil }
+
+        let result = await wifiMonitor.associate(network: network, password: password)
+
+        if case .success = result,
+           let password, !password.isEmpty,
+           let ssid = network.ssid, !ssid.isEmpty {
+            do {
+                try KeychainService.set(password: password, forSSID: ssid)
+            } catch {
+                // UX-DR31: persistence is best-effort — a failed write must not surface as a
+                // connection failure. The radio is already associated.
+                Log.servicesKeychain.error("Keychain write failed for SSID after successful connect: \(String(describing: error), privacy: .public)")
+            }
+        }
+
+        return result
+    }
+
+    /// Stored passphrase for `ssid`, or `nil` if none is remembered. Lets `WiFiRow` pre-fill its
+    /// `SecureField` on expansion (so a returning user just presses Return) without the View ever
+    /// importing `KeychainService` — the Keychain boundary stays inside the State layer (NFR35).
+    func storedPassword(forSSID ssid: String) -> String? {
+        KeychainService.password(forSSID: ssid)
     }
 
     private func rebuildState(

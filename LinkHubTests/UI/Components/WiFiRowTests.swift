@@ -56,4 +56,25 @@ final class WiFiRowTests: XCTestCase {
             XCTAssertEqual(WiFiRow.signalStrengthDescription(for: rssi), expected, "rssi \(rssi)")
         }
     }
+
+    // MARK: - Story 2.3 — error-caption mapping (UX-DR30/34)
+
+    func testErrorCaptionCoversAllCases() {
+        let cases: [(WiFiConnectionFailure, String)] = [
+            (.wrongPassword, "Incorrect password"),
+            (.outOfRange, "Network out of range"),
+            (.associationTimeout, "Connection timed out"),
+            (.authenticationError, "Authentication failed"),
+            (.unknown(code: -1), "Couldn't connect")
+        ]
+        for (failure, expected) in cases {
+            XCTAssertEqual(WiFiRow.errorCaption(for: failure), expected, "\(failure)")
+        }
+    }
+
+    func testErrorCaptionUnknownIgnoresAssociatedCode() {
+        // The caption copy is the same regardless of the carried raw code.
+        XCTAssertEqual(WiFiRow.errorCaption(for: .unknown(code: 42)),
+                       WiFiRow.errorCaption(for: .unknown(code: -3999)))
+    }
 }

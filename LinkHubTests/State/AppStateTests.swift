@@ -179,6 +179,68 @@ final class AppStateTests: XCTestCase {
         defer { state.stopMonitors() }
         XCTAssertEqual(stub.startCallCount, 1)
     }
+
+    // MARK: - Story 2.3 — connect orchestration
+
+    private func passwordNetwork(id: String = "net-1", ssid: String? = "GuestNetwork") -> WiFiNetwork {
+        WiFiNetwork(
+            id: id, ssid: ssid, bssid: id, rssi: -55, isConnected: false,
+            requiresPassword: true, security: .wpa2Personal, isCaptive: false
+        )
+    }
+
+    #if DEBUG
+    @MainActor
+    func testConnectReturnsSuccessFromMonitor() async {
+        let mock = MockWiFiMonitor()
+        mock.nextAssociateResult = .success(())
+        let state = AppState(wifiMonitor: mock)
+
+        // Use a nil-SSID network so the success path does NOT write to the real Keychain
+        // (no stable account → skipped per the persist-only-on-success rule).
+        let hidden = passwordNetwork(id: "hidden-1", ssid: nil)
+        let result = await state.connect(to: hidden, password: "secret")
+
+        guard case .success = result else {
+            return XCTFail("expected .success, got \(result)")
+        }
+        XCTAssertNil(state.connectingNetworkID, "connectingNetworkID must clear after the attempt")
+    }
+
+    @MainActor
+    func testConnectReturnsFailureUnchanged() async {
+        let mock = MockWiFiMonitor()
+        mock.nextAssociateResult = .failure(.wrongPassword)
+        let state = AppState(wifiMonitor: mock)
+
+        let result = await state.connect(to: passwordNetwork(), password: "wrong")
+
+        guard case .failure(let failure) = result else {
+            return XCTFail("expected .failure, got \(result)")
+        }
+        XCTAssertEqual(failure, .wrongPassword)
+        XCTAssertNil(state.connectingNetworkID, "connectingNetworkID must clear even on failure")
+    }
+
+    @MainActor
+    func testConnectSetsConnectingNetworkIDDuringAttempt() async {
+        let mock = MockWiFiMonitor()
+        mock.nextAssociateResult = .success(())
+        let state = AppState(wifiMonitor: mock)
+        let hidden = passwordNetwork(id: "hidden-2", ssid: nil)
+
+        XCTAssertNil(state.connectingNetworkID)
+
+        // The mock's associate has a ~200 ms delay; observe the ID is set mid-flight.
+        // The Task inherits MainActor isolation from this test, so capturing `state` is safe.
+        let attempt = Task { @MainActor in await state.connect(to: hidden, password: nil) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.connectingNetworkID, hidden.id, "ID must be set while connecting")
+
+        _ = await attempt.value
+        XCTAssertNil(state.connectingNetworkID, "ID must clear after the attempt resolves")
+    }
+    #endif
 }
 
 @MainActor

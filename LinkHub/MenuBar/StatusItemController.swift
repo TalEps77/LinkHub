@@ -15,6 +15,11 @@ final class StatusItemController {
     /// Tracks Wi-Fi power so a true↔false flip posts the "Wi-Fi turned on/off" announcement
     /// (UX-DR25). `nil` until the first emission so cold launch does not announce.
     private var previousWiFiEnabled: Bool? = nil
+    /// Tracks the connected Wi-Fi network id to announce "Connected to {SSID}" on a new
+    /// association (Story 2.3, UX-DR25). `false` until the first emission so a cold launch that is
+    /// already connected does not announce.
+    private var sawFirstNetworkState: Bool = false
+    private var previousConnectedWifiID: String? = nil
     private var previousLocationDenied: Bool? = nil
     /// Armed on a Location denied→granted transition (Story 1.5, UX-DR25). Consumed on the next
     /// `networkState` emission — i.e. when the auto-retried scan first completes after the grant —
@@ -53,6 +58,7 @@ final class StatusItemController {
                 self.updateTooltip(for: state)
                 self.announceIfDisconnected(for: state)
                 self.announceWiFiPowerChange(for: state)
+                self.announceConnectionIfNew(for: state)
                 self.announceNetworksLoadingIfPending()
             }
             .store(in: &cancellables)
@@ -144,6 +150,19 @@ final class StatusItemController {
             postAnnouncement("No network connection")
         }
         previousMode = newMode
+    }
+
+    /// UX-DR25 (Story 2.3): announce "Connected to {SSID}" when the connected Wi-Fi network
+    /// changes to a new non-nil value. Skips the first emission so a cold launch that is already
+    /// connected stays silent; the disconnect utterance is owned by announceIfDisconnected.
+    private func announceConnectionIfNew(for state: NetworkState) {
+        defer {
+            previousConnectedWifiID = state.connectedWifi?.id
+            sawFirstNetworkState = true
+        }
+        guard sawFirstNetworkState else { return }
+        guard let connected = state.connectedWifi, connected.id != previousConnectedWifiID else { return }
+        postAnnouncement("Connected to \(connected.ssid ?? "Hidden Network")")
     }
 
     /// UX-DR25: announce Wi-Fi power flips so VoiceOver users perceive the radio state change.
