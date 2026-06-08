@@ -71,6 +71,10 @@ final class MockWiFiMonitor: WiFiMonitorProtocol {
     var scanStatusPublisher: Published<ScanStatus>.Publisher { $scanStatus }
     var isLocationDeniedPublisher: Published<Bool>.Publisher { $isLocationDenied }
 
+    /// Drives the result of the next `associate(network:password:)` call so Stories 2.3/2.4 and
+    /// tests can simulate success or any cause-typed failure. Defaults to success.
+    var nextAssociateResult: Result<Void, WiFiConnectionFailure> = .success(())
+
     init() {
         self.networks = Self.sampleNetworks
         self.connectedNetwork = Self.sampleNetworks.first { $0.isConnected }
@@ -89,6 +93,18 @@ final class MockWiFiMonitor: WiFiMonitorProtocol {
             // Honor cancellation — leave networks untouched, return to idle.
             scanStatus = .idle
         }
+    }
+
+    func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> {
+        // Mirror the requestScan mock style: short simulated delay, then return the canned result.
+        do {
+            try await Task.sleep(nanoseconds: 200_000_000)
+        } catch {
+            // Honor cancellation — surface it as a benign timeout-shaped failure rather than
+            // a false success, so cancelled associations are observable in tests.
+            return .failure(.associationTimeout)
+        }
+        return nextAssociateResult
     }
 }
 #endif

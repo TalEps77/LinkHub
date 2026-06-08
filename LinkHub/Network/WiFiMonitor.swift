@@ -36,6 +36,10 @@ final class WiFiMonitor: NSObject, CWEventDelegate, CLLocationManagerDelegate, W
     #if DEBUG
     /// Test-only override for the scan body. When set, replaces the real CoreWLAN scan.
     internal var _scanOverride: (@Sendable () async throws -> [WiFiNetwork])? = nil
+    /// Test-only override for the associate body. When set, replaces the real CoreWLAN
+    /// `associate(to:password:)` path so `associate(network:password:)` is exercisable without
+    /// live hardware. Mirrors the `_scanOverride` seam.
+    internal var _associateOverride: (@Sendable (WiFiNetwork, String?) async -> Result<Void, WiFiConnectionFailure>)? = nil
     /// Test-only read of the "authorization already requested" guard (FR39). Lets a test assert
     /// that the first `requestScan()` flips this true exactly once, without a live CLLocationManager.
     internal var _didRequestAuthorizationForTesting: Bool { didRequestAuthorization }
@@ -194,6 +198,97 @@ final class WiFiMonitor: NSObject, CWEventDelegate, CLLocationManagerDelegate, W
                 security: security,
                 isCaptive: false
             )
+        }
+    }
+
+    // MARK: - Association (Story 2.1)
+
+    /// Associates with `network` (open variant when `password == nil`) and reports the outcome as
+    /// a cause-typed `Result` (FR29, FR37). The blocking `CWInterface.associate(to:password:)`
+    /// call runs on `Task.detached` (off the MainActor) exactly like `performScan`; only Sendable
+    /// values (`ssid`, `bssid`, `password`) cross into the detached closure. The matching live
+    /// `CWNetwork` is re-found inside that closure from a fresh `scanForNetworks` (preferred —
+    /// the cache may be stale) keyed by BSSID when present, else by SSID; if no match is found we
+    /// return `.failure(.outOfRange)`. Any thrown error is mapped to `WiFiConnectionFailure` via
+    /// `failure(from:)` (symbolic `CWError.Code` first, pure numeric map as fallback) — no
+    /// `NSError` leaves this method (UX-DR30). The monitor mutates no `@Published` state here, so it is left clean and
+    /// retryable without restart (NFR10); `connectedNetwork` updates arrive via `CWEventDelegate`.
+    func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> {
+        #if DEBUG
+        if let _associateOverride {
+            return await _associateOverride(network, password)
+        }
+        #endif
+        // Capture only Sendable values; never let CWNetwork/CWInterface cross the boundary.
+        let ssid = network.ssid
+        let bssid = network.bssid
+        let detached = Task.detached(priority: .userInitiated) {
+            Self.performAssociate(ssid: ssid, bssid: bssid, password: password)
+        }
+        return await detached.value
+    }
+
+    /// Pure-ish CoreWLAN association run off the MainActor. Re-finds the live `CWNetwork` by
+    /// BSSID (or SSID for hidden networks) from a fresh scan, calls `associate(to:password:)`, and
+    /// maps any thrown error to `WiFiConnectionFailure`. Returns a `Sendable` `Result`; no
+    /// `CWNetwork`/`CWInterface` reference escapes this closure.
+    nonisolated private static func performAssociate(
+        ssid: String?,
+        bssid: String?,
+        password: String?
+    ) -> Result<Void, WiFiConnectionFailure> {
+        guard let iface = CWWiFiClient.shared().interface() else {
+            return .failure(.outOfRange)
+        }
+        let scanned: [CWNetwork]
+        do {
+            scanned = Array(try iface.scanForNetworks(withSSID: ssid?.data(using: .utf8)))
+        } catch {
+            return .failure(Self.failure(from: error))
+        }
+        // Prefer BSSID (unique per AP); fall back to SSID match for hidden / pre-auth networks.
+        let match = scanned.first { bssid != nil && $0.bssid == bssid }
+            ?? scanned.first { ssid != nil && $0.ssid == ssid }
+        guard let cwNet = match else {
+            return .failure(.outOfRange)
+        }
+        do {
+            try iface.associate(to: cwNet, password: password)
+            return .success(())
+        } catch {
+            return .failure(Self.failure(from: error))
+        }
+    }
+
+    /// Maps a thrown CoreWLAN error to a cause-typed `WiFiConnectionFailure`. Switches on the
+    /// strongly-typed `CWError.Code` enum first — symbolic cases are stable across SDK versions,
+    /// unlike the raw integer values. Only when the thrown error is not a `CWError` do we hand the
+    /// raw `(error as NSError).code` to the pure `WiFiConnectionFailure.map(cwErrorCode:)` numeric
+    /// fallback. This keeps `WiFiConnectionFailure` (Models, Foundation-only) CoreWLAN-free while
+    /// giving the live path version-robust, name-based mapping.
+    ///
+    /// Wrong-password rationale: CoreWLAN surfaces a rejected PSK as `.notPermitted` (no dedicated
+    /// numeric `CWErr` constant exists), so that case is recognized here, not in the numeric map.
+    nonisolated private static func failure(from error: Error) -> WiFiConnectionFailure {
+        guard let cwError = error as? CWError else {
+            return WiFiConnectionFailure.map(cwErrorCode: (error as NSError).code)
+        }
+        switch cwError.code {
+        case .notPermitted:
+            // PSK rejected — the dominant, user-actionable cause is an incorrect passphrase.
+            return .wrongPassword
+        case .timeout, .deviceTimeout:
+            // Association handshake stalled.
+            return .associationTimeout
+        case .unsupportedCapabilities, .unspecifiedFailure, .notSupported:
+            // Radio could not reach / complete association with the target.
+            return .outOfRange
+        default:
+            // Any other CWError — including the EAPOL/auth code (rawValue 1, no Swift enum case)
+            // and anything new. Hand the raw integer to the pure numeric map, which recognizes
+            // kCWEAPOLErr (1 → .authenticationError) and the timeout/out-of-range constants, and
+            // preserves anything unrecognized as .unknown(code:).
+            return WiFiConnectionFailure.map(cwErrorCode: (error as NSError).code)
         }
     }
 

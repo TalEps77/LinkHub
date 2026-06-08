@@ -1,5 +1,5 @@
 # generated: 2026-05-09
-# last_updated: 2026-06-08 (Epic 1 complete; Epic 2 next)
+# last_updated: 2026-06-08 (Epic 2: 2.1+2.2 done; 2.3 next)
 # project: LinkHub
 # project_key: NOKEY
 # tracking_system: file-system
@@ -51,9 +51,9 @@ development_status:
   1-6-wi-fi-side-voiceover-statusbaricon-and-idle-resource-baseline: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-wifimonitor-associate-cause-typed-connection-failure: backlog
-  2-2-keychainservice-persist-wi-fi-passwords: backlog
+  epic-2: in-progress
+  2-1-wifimonitor-associate-cause-typed-connection-failure: done
+  2-2-keychainservice-persist-wi-fi-passwords: done
   2-3-wifirow-expanded-state-inline-password-error-caption: backlog
   2-4-othernetworkpanel-hidden-network-connect: backlog
   2-5-wi-fi-power-toggle-captive-portal-handoff: backlog

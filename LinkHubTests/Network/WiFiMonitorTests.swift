@@ -136,6 +136,85 @@ final class WiFiMonitorTests: XCTestCase {
         await monitor.requestScan()
         XCTAssertEqual(observed, [.idle])
     }
+
+    // MARK: - associate(network:password:) (Story 2.1)
+
+    private static let sampleNetwork = WiFiNetwork(
+        id: "aa:bb:cc:dd:ee:ff",
+        ssid: "TestNet",
+        bssid: "aa:bb:cc:dd:ee:ff",
+        rssi: -40,
+        isConnected: false,
+        requiresPassword: true,
+        security: .wpa2Personal,
+        isCaptive: false
+    )
+
+    @MainActor
+    func testAssociateReturnsSuccessViaOverride() async {
+        let monitor = WiFiMonitor()
+        monitor._associateOverride = { _, _ in .success(()) }
+        let result = await monitor.associate(network: Self.sampleNetwork, password: "hunter2")
+        // .success(()) — Result<Void, _> isn't Equatable, so assert via isSuccess.
+        guard case .success = result else {
+            return XCTFail("expected .success, got \(result)")
+        }
+    }
+
+    @MainActor
+    func testAssociateOpenNetworkPassesNilPasswordToOverride() async {
+        let monitor = WiFiMonitor()
+        let captured = PasswordBox()
+        monitor._associateOverride = { _, password in
+            await captured.set(password)
+            return .success(())
+        }
+        _ = await monitor.associate(network: Self.sampleNetwork, password: nil)
+        let seen = await captured.value
+        XCTAssertNil(seen, "open-network association must forward a nil password")
+    }
+
+    @MainActor
+    func testAssociateForwardsTypedFailureFromOverride() async {
+        let monitor = WiFiMonitor()
+        monitor._associateOverride = { _, _ in .failure(.wrongPassword) }
+        let result = await monitor.associate(network: Self.sampleNetwork, password: "bad")
+        guard case .failure(let cause) = result else {
+            return XCTFail("expected .failure, got \(result)")
+        }
+        XCTAssertEqual(cause, .wrongPassword)
+    }
+
+    @MainActor
+    func testAssociateSurfacesEachCauseTypedFailure() async {
+        let monitor = WiFiMonitor()
+        let causes: [WiFiConnectionFailure] = [
+            .wrongPassword, .outOfRange, .associationTimeout, .authenticationError, .unknown(code: 42)
+        ]
+        for cause in causes {
+            monitor._associateOverride = { _, _ in .failure(cause) }
+            let result = await monitor.associate(network: Self.sampleNetwork, password: "x")
+            guard case .failure(let got) = result else {
+                XCTFail("expected .failure(\(cause))")
+                continue
+            }
+            XCTAssertEqual(got, cause)
+        }
+    }
+
+    @MainActor
+    func testAssociateIsRetryableAfterFailure() async {
+        // NFR10: a failed attempt leaves the monitor clean — a subsequent attempt can succeed
+        // without any restart / reset. We drive a failure then a success through the same monitor.
+        let monitor = WiFiMonitor()
+        monitor._associateOverride = { _, _ in .failure(.associationTimeout) }
+        let first = await monitor.associate(network: Self.sampleNetwork, password: "x")
+        guard case .failure = first else { return XCTFail("expected first attempt to fail") }
+
+        monitor._associateOverride = { _, _ in .success(()) }
+        let second = await monitor.associate(network: Self.sampleNetwork, password: "x")
+        guard case .success = second else { return XCTFail("expected retry to succeed") }
+    }
     #endif
 
     @MainActor
@@ -186,4 +265,11 @@ final class WiFiMonitorTests: XCTestCase {
 private actor Counter {
     private(set) var value: Int = 0
     func bump() { value += 1 }
+}
+
+/// Captures the password forwarded into the `_associateOverride` closure so the test can assert
+/// the open-network path passes `nil`. Actor-isolated to satisfy the `@Sendable` closure.
+private actor PasswordBox {
+    private(set) var value: String?
+    func set(_ password: String?) { value = password }
 }

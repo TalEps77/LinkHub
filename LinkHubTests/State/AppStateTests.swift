@@ -203,4 +203,5 @@ private final class StubWiFiMonitor: WiFiMonitorProtocol {
     func start() { startCallCount += 1 }
     func stop() { stopCallCount += 1 }
     func requestScan() async {}
+    func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> { .success(()) }
 }

@@ -1,5 +1,6 @@
-// Story 2.1 adds `connect(to:password:remember:)`, `disconnect()`, and the typed
-// `WiFiConnectionFailure` error path. Do not add them now — out of scope for Story 1.3.
+// Story 2.1 adds `associate(network:password:)` returning the typed `WiFiConnectionFailure`
+// error path. Keychain persistence (Story 2.2), `disconnect()` / captive handling (Story 2.5),
+// and power toggle (Story 2.5) are still out of scope.
 
 import Foundation
 import Combine
@@ -30,4 +31,11 @@ protocol WiFiMonitorProtocol: AnyObject {
     func start()
     func stop()
     func requestScan() async
+
+    /// Attempts to associate with `network`. When `password == nil` the open variant is used.
+    /// Runs the blocking `CWInterface.associate(to:password:)` off the MainActor and returns a
+    /// cause-typed `Result` (FR29) — no `NSError` ever crosses this boundary (UX-DR30). On
+    /// completion (success or failure) the monitor is left in a clean, retryable state (NFR10).
+    /// UI rendering of the failure is Story 2.3; this method only delivers the typed contract.
+    func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure>
 }
