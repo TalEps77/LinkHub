@@ -82,6 +82,32 @@ final class PopoverControllerTests: XCTestCase {
 
         XCTAssertFalse(controller.hasEventMonitor)
     }
+
+    @MainActor
+    func testTriggerScanOnShowFiresRequestScan() {
+        // Verifies the FR26 scan-on-show trigger via the #if DEBUG test hook, avoiding the
+        // need to mount a real status-bar button with a window. MockWiFiMonitor cycles
+        // scanStatus idle → scanning → idle with a 200 ms simulated delay.
+        let mock = MockWiFiMonitor()
+        let appState = AppState(wifiMonitor: mock)
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        defer { NSStatusBar.system.removeStatusItem(statusItem) }
+        let controller = PopoverController(appState: appState, statusItemButton: statusItem.button)
+
+        var observed: [ScanStatus] = []
+        let expectation = expectation(description: "scan completes (idle → scanning → idle)")
+        var cancellable: AnyCancellable?
+        cancellable = mock.$scanStatus.sink { status in
+            observed.append(status)
+            if observed.count >= 3 { expectation.fulfill() }
+        }
+
+        controller._triggerScanOnShowForTesting()
+
+        wait(for: [expectation], timeout: 1.0)
+        cancellable?.cancel()
+        XCTAssertEqual(observed, [.idle, .scanning, .idle])
+    }
 }
 
 @MainActor

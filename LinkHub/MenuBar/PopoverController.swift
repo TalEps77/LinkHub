@@ -5,6 +5,7 @@ import SwiftUI
 final class PopoverController: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private weak var button: NSStatusBarButton?
+    private let appState: AppState
     private let hostingController: NSHostingController<AnyView>
     private var eventMonitor: Any? = nil
 
@@ -16,6 +17,7 @@ final class PopoverController: NSObject, NSPopoverDelegate {
 
     init(appState: AppState, statusItemButton: NSStatusBarButton?) {
         self.button = statusItemButton
+        self.appState = appState
         self.hostingController = NSHostingController(
             rootView: AnyView(RootPanelView().environmentObject(appState))
         )
@@ -42,8 +44,25 @@ final class PopoverController: NSObject, NSPopoverDelegate {
             }
             return event
         }
-        // Story 1.4: scan-on-show hook (FR26)
+        triggerScanOnShow()
     }
+
+    /// Fire-and-forget on-demand scan when the panel becomes visible (FR26). Captures only
+    /// `appState` (process-scoped, owned by AppDelegate) — never `self` — to avoid a retain
+    /// cycle through the popover delegate. `requestScan()` is non-throwing (Story 1.3), and
+    /// its `inFlightScan` guard no-ops rapid re-entrant shows.
+    private func triggerScanOnShow() {
+        Task { @MainActor [appState] in
+            await appState.wifiMonitor.requestScan()
+        }
+    }
+
+    #if DEBUG
+    /// Test hook: exercises the scan-on-show trigger without mounting an `NSStatusBar` button.
+    func _triggerScanOnShowForTesting() {
+        triggerScanOnShow()
+    }
+    #endif
 
     func close() {
         popover.performClose(nil)
