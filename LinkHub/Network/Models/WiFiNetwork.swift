@@ -12,4 +12,17 @@ struct WiFiNetwork: Identifiable, Equatable, Sendable {
     let requiresPassword: Bool
     let security: WiFiSecurity
     let isCaptive: Bool
+
+    /// Canonical RSSI (dBm) → human signal-strength descriptor (UX signal-quality table).
+    /// Single source of truth shared by the panel rows (`WiFiRow`) and the menu-bar icon
+    /// accessibility label (`StatusItemController`). Buckets must agree with
+    /// `SignalBars.activeBars(for:)`.
+    static func signalStrengthDescription(for rssi: Int) -> String {
+        switch rssi {
+        case let r where r >= -60: return "excellent"
+        case let r where r >= -70: return "good"
+        case let r where r >= -80: return "fair"
+        default: return "weak"
+        }
+    }
 }

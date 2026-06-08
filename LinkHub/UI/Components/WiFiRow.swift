@@ -53,14 +53,10 @@ struct WiFiRow: View {
         return "\(name), \(security), signal \(strength)"
     }
 
-    /// RSSI (dBm) → human descriptor. Buckets must agree with `SignalBars.activeBars(for:)`.
+    /// RSSI (dBm) → human descriptor. Delegates to the canonical model helper so the panel row
+    /// and the menu-bar icon label never diverge. Buckets must agree with `SignalBars.activeBars(for:)`.
     static func signalStrengthDescription(for rssi: Int) -> String {
-        switch rssi {
-        case let r where r >= -60: return "excellent"
-        case let r where r >= -70: return "good"
-        case let r where r >= -80: return "fair"
-        default: return "weak"
-        }
+        WiFiNetwork.signalStrengthDescription(for: rssi)
     }
 }
 

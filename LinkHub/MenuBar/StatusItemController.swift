@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import QuartzCore
 
 @MainActor
 final class StatusItemController {
@@ -8,6 +9,12 @@ final class StatusItemController {
     private var cancellables: Set<AnyCancellable> = []
     private let popoverController: PopoverController
     private var previousMode: ConnectionMode? = nil
+    /// Last rendered SF Symbol name — gates the 300 ms crossfade so the icon only animates on an
+    /// actual symbol change, never on RSSI-only churn or the initial paint (UX-DR8, UX-DR16).
+    private var previousSymbolName: String? = nil
+    /// Tracks Wi-Fi power so a true↔false flip posts the "Wi-Fi turned on/off" announcement
+    /// (UX-DR25). `nil` until the first emission so cold launch does not announce.
+    private var previousWiFiEnabled: Bool? = nil
     private var previousLocationDenied: Bool? = nil
     /// Armed on a Location denied→granted transition (Story 1.5, UX-DR25). Consumed on the next
     /// `networkState` emission — i.e. when the auto-retried scan first completes after the grant —
@@ -32,7 +39,7 @@ final class StatusItemController {
 
     func start() {
         observeState()
-        updateIcon(for: appState.networkState.mode)
+        updateIcon(for: appState.networkState)
         updateLabel(for: appState.networkState)
         updateTooltip(for: appState.networkState)
     }
@@ -41,10 +48,11 @@ final class StatusItemController {
         appState.$networkState
             .sink { [weak self] state in
                 guard let self else { return }
-                self.updateIcon(for: state.mode)
+                self.updateIcon(for: state)
                 self.updateLabel(for: state)
                 self.updateTooltip(for: state)
-                self.announceIfDisconnected(newMode: state.mode)
+                self.announceIfDisconnected(for: state)
+                self.announceWiFiPowerChange(for: state)
                 self.announceNetworksLoadingIfPending()
             }
             .store(in: &cancellables)
@@ -64,74 +72,86 @@ final class StatusItemController {
             .store(in: &cancellables)
     }
 
-    private func updateIcon(for mode: ConnectionMode) {
-        let symbolName: String
-        let accessibility: String
-        switch mode {
-        case .ethernetActive:
-            symbolName = "cable.connector"
-            accessibility = "Ethernet active"
-        case .wifiOnly:
-            symbolName = "wifi"
-            accessibility = "Wi-Fi connected"
-        case .disconnected:
-            symbolName = "wifi.slash"
-            accessibility = "No network connection"
-        }
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibility)?
+    private func updateIcon(for state: NetworkState) {
+        let symbolName = Self.symbolName(for: state)
+        let label = Self.accessibilityLabel(for: state)
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)?
             .withSymbolConfiguration(symbolConfig)
         image?.isTemplate = true
-        statusItem.button?.image = image
+        guard let button = statusItem.button else { return }
+        // UX-DR8/UX-DR16: crossfade only on an actual symbol change, and only when Reduce Motion
+        // is off. The initial paint (previousSymbolName == nil) and RSSI-only churn never animate.
+        let symbolChanged = previousSymbolName != nil && previousSymbolName != symbolName
+        if symbolChanged && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            button.wantsLayer = true
+            let transition = CATransition()
+            transition.type = .fade
+            transition.duration = 0.3
+            transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            button.layer?.add(transition, forKey: "iconCrossfade")
+        }
+        button.image = image
+        previousSymbolName = symbolName
     }
 
     private func updateLabel(for state: NetworkState) {
-        let label: String
-        switch state.mode {
-        case .ethernetActive:
-            // Story 1.3+ will resolve primaryEthernet displayName
-            label = "LinkHub: Ethernet"
-        case .wifiOnly:
-            // Story 1.3+ will resolve connectedWifi SSID
-            label = "LinkHub: Wi-Fi"
-        case .disconnected:
-            label = "LinkHub: No network connection"
-        }
-        statusItem.button?.setAccessibilityLabel(label)
+        statusItem.button?.setAccessibilityLabel(Self.accessibilityLabel(for: state))
     }
 
     private func updateTooltip(for state: NetworkState) {
-        let tooltip: String
-        switch state.mode {
-        case .ethernetActive:
-            tooltip = "LinkHub: Ethernet"
-        case .wifiOnly:
-            tooltip = "LinkHub: Wi-Fi"
-        case .disconnected:
-            tooltip = "LinkHub: No network connection"
-        }
-        statusItem.button?.toolTip = tooltip
+        statusItem.button?.toolTip = Self.accessibilityLabel(for: state)
     }
 
-    private func announceIfDisconnected(newMode: ConnectionMode) {
+    /// SF Symbol for the menu-bar icon. Wi-Fi-side mapping only (FR2/FR4); the Ethernet path
+    /// (`cable.connector`) is fully wired in Story 3.4. Pure — unit-tested directly.
+    static func symbolName(for state: NetworkState) -> String {
+        switch state.mode {
+        case .ethernetActive: return "cable.connector"
+        case .wifiOnly: return "wifi"
+        case .disconnected: return "wifi.slash"
+        }
+    }
+
+    /// VoiceOver label for the menu-bar icon per UX-DR24. Distinguishes "Wi-Fi off" (radio
+    /// powered down) from "No network connection" (radio on, nothing joined) — a distinction
+    /// `ConnectionMode` alone can't carry, so the label reads `isWiFiEnabled`. The full Ethernet
+    /// label (`displayName`, speed) lands in Story 3.4. Pure — unit-tested directly.
+    static func accessibilityLabel(for state: NetworkState) -> String {
+        switch state.mode {
+        case .ethernetActive:
+            return "Ethernet connected"
+        case .wifiOnly:
+            let ssid = state.connectedWifi?.ssid ?? "Hidden Network"
+            let strength = WiFiNetwork.signalStrengthDescription(for: state.connectedWifi?.rssi ?? -100)
+            return "Wi-Fi connected, \(ssid), signal \(strength)"
+        case .disconnected:
+            return state.isWiFiEnabled ? "No network connection" : "Wi-Fi off"
+        }
+    }
+
+    private func announceIfDisconnected(for state: NetworkState) {
+        let newMode = state.mode
         let isFirstEmission = (previousMode == nil)
         let transitionedToDisconnected = previousMode != nil
             && previousMode != .disconnected
             && newMode == .disconnected
         // Cold-launch-while-offline: VoiceOver users need a signal that the app started disconnected.
         let coldLaunchOffline = isFirstEmission && newMode == .disconnected
-        if transitionedToDisconnected || coldLaunchOffline {
-            if let button = statusItem.button {
-                NSAccessibility.post(
-                    element: button,
-                    notification: .announcementRequested,
-                    userInfo: [
-                        .announcement: "LinkHub: No network connection",
-                        .priority: NSAccessibilityPriorityLevel.high.rawValue
-                    ]
-                )
-            }
+        // Suppress when the radio is off — that path is owned by announceWiFiPowerChange
+        // ("Wi-Fi turned off"); announcing "No network connection" too would be a misleading
+        // double utterance.
+        if (transitionedToDisconnected || coldLaunchOffline) && state.isWiFiEnabled {
+            postAnnouncement("No network connection")
         }
         previousMode = newMode
+    }
+
+    /// UX-DR25: announce Wi-Fi power flips so VoiceOver users perceive the radio state change.
+    /// Skips the first emission (cold launch) so startup never announces.
+    private func announceWiFiPowerChange(for state: NetworkState) {
+        defer { previousWiFiEnabled = state.isWiFiEnabled }
+        guard let prev = previousWiFiEnabled, prev != state.isWiFiEnabled else { return }
+        postAnnouncement(state.isWiFiEnabled ? "Wi-Fi turned on" : "Wi-Fi turned off")
     }
 
     /// UX-DR25: after the user grants Location following a denial, the next scan completion posts
@@ -140,16 +160,21 @@ final class StatusItemController {
     private func announceNetworksLoadingIfPending() {
         guard announceNetworksLoadingPending else { return }
         announceNetworksLoadingPending = false
-        if let button = statusItem.button {
-            NSAccessibility.post(
-                element: button,
-                notification: .announcementRequested,
-                userInfo: [
-                    .announcement: "Wi-Fi networks loading",
-                    .priority: NSAccessibilityPriorityLevel.high.rawValue
-                ]
-            )
-        }
+        postAnnouncement("Wi-Fi networks loading")
+    }
+
+    /// Posts a high-priority VoiceOver announcement on the status-item button (NFR26). The button
+    /// is the announcement element so the utterance is associated with the menu-bar control.
+    private func postAnnouncement(_ message: String) {
+        guard let button = statusItem.button else { return }
+        NSAccessibility.post(
+            element: button,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue
+            ]
+        )
     }
 
     @objc private func handleStatusItemClick() {
