@@ -9,14 +9,37 @@ import SwiftUI
 struct WiFiSection: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    /// Swaps the popover content to `OtherNetworkPanel` (UX-DR15/32). Injected by `RootPanelView`;
+    /// defaults to a no-op so the section renders standalone in previews/tests. Using the
+    /// environment action (not a closure through `init`) keeps `WiFiSection`'s API stable.
+    @Environment(\.showOtherNetwork) private var showOtherNetwork
     @State private var wifiPowerStub: Bool = true   // epic AC #2 — non-functional
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             content
+            // "Other Network…" footer (Story 2.4). Hidden in the location-denied state, where the
+            // list is fully replaced by LocationDeniedView. The "Open Network Settings…" footer
+            // link is Story 2.6 — not added here.
+            if !appState.wifiLocationDenied {
+                otherNetworkFooter
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A `.plain` footer button below the network list that opens the hidden-network join form
+    /// in-place (UX-DR34 ellipsis copy). Routes via the `\.showOtherNetwork` environment action.
+    private var otherNetworkFooter: some View {
+        Button("Other Network…", action: showOtherNetwork)
+            .buttonStyle(.plain)
+            .font(.body)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .padding(.horizontal, PanelLayout.rowHorizontalPadding)
+            .padding(.vertical, PanelLayout.rowVerticalPadding)
+            .accessibilityLabel("Other Network")
     }
 
     private var header: some View {
