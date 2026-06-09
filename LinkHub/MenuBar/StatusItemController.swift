@@ -125,7 +125,12 @@ final class StatusItemController {
     static func accessibilityLabel(for state: NetworkState) -> String {
         switch state.mode {
         case .ethernetActive:
-            return "Ethernet connected"
+            // UX-DR24: "Ethernet connected, {displayName}, {speed}" (FR8). Story 3.4.
+            let name = state.primaryEthernet?.displayName ?? "Ethernet"
+            if let mbps = state.primaryEthernet?.linkSpeedMbps {
+                return "Ethernet connected, \(name), \(Self.speedDescription(mbps))"
+            }
+            return "Ethernet connected, \(name)"
         case .wifiOnly:
             let ssid = state.connectedWifi?.ssid ?? "Hidden Network"
             let strength = WiFiNetwork.signalStrengthDescription(for: state.connectedWifi?.rssi ?? -100)
@@ -133,6 +138,17 @@ final class StatusItemController {
         case .disconnected:
             return state.isWiFiEnabled ? "No network connection" : "Wi-Fi off"
         }
+    }
+
+    /// Negotiated link speed → human string for the UX-DR24 Ethernet icon label (Story 3.4):
+    /// ≥1000 Mbps renders as "N.N Gbps", otherwise "N Mbps". (Story 3.3's `EthernetRow` carries a
+    /// parallel formatter; consolidate onto the `EthernetInterface` model in a future cleanup —
+    /// tracked in the release-gate checklist's spec-divergence section.)
+    static func speedDescription(_ mbps: Int) -> String {
+        if mbps >= 1000 {
+            return String(format: "%.1f Gbps", Double(mbps) / 1000.0)
+        }
+        return "\(mbps) Mbps"
     }
 
     private func announceIfDisconnected(for state: NetworkState) {
