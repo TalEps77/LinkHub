@@ -26,6 +26,14 @@ struct RootPanelView: View {
             OtherNetworkPanel(onClose: { showingOtherNetwork = false })
         } else {
             VStack(spacing: PanelLayout.interSectionSpacing) {
+                // Story 3.3: EthernetSection renders above WiFiSection when ≥1 interface HAS LINK
+                // (FR12, UX-DR9/10). EthernetMonitor enumerates all hardware interfaces — including
+                // cable-out `.noLink` ones — so the predicate must be "has link" (any state other
+                // than .noLink), not merely non-empty. The 250 ms section-reorder animation +
+                // cable-out 1.5 s grace timer are Story 3.5 — not added here.
+                if appState.networkState.ethernetInterfaces.contains(where: { $0.state != .noLink }) {
+                    EthernetSection()
+                }
                 WiFiSection()
             }
         }
@@ -49,12 +57,11 @@ extension EnvironmentValues {
 
 #if DEBUG
 #Preview {
-    let mock = MockWiFiMonitor()
-    let state = AppState(wifiMonitor: mock)
+    let state = AppState(wifiMonitor: MockWiFiMonitor(), ethernetMonitor: MockEthernetMonitor())
     state._setNetworkStateForTesting(NetworkState(
-        mode: .wifiOnly,
-        ethernetInterfaces: [],
-        primaryEthernet: nil,
+        mode: .ethernetActive,
+        ethernetInterfaces: MockEthernetMonitor.sampleInterfaces,
+        primaryEthernet: MockEthernetMonitor.sampleInterfaces.first { $0.isActive },
         wifiNetworks: MockWiFiMonitor.sampleNetworks,
         connectedWifi: MockWiFiMonitor.sampleNetworks.first { $0.isConnected },
         isWiFiEnabled: true,
