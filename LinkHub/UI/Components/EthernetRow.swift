@@ -136,16 +136,26 @@ struct EthernetRow: View {
         return "\(mbps) Mbps"
     }
 
-    /// Combined VoiceOver label. The canonical UX-DR23 templates are owned by Story 3.6; this is a
-    /// reasonable interim combination: "{displayName}, {status}[, {detail}]".
+    /// Combined VoiceOver label per the canonical UX-DR23 templates (Story 3.6, FR57, NFR25):
+    /// - active:      "{displayName}, active, {ip}, {speed}" ("{ip}" → "no address" if absent;
+    ///                speed omitted when unknown)
+    /// - obtaining:   "{displayName}, obtaining address"
+    /// - dhcpTimeout: "{displayName}, DHCP timeout, no address"
+    /// - noLink:      "{displayName}, no link"
     static func accessibilityLabel(for interface: EthernetInterface) -> String {
-        let status = statusLabel(for: interface.state)
-        if interface.state == .active {
-            let detail = detailString(for: interface)
-            return detail == status ? "\(interface.displayName), \(status)"
-                                     : "\(interface.displayName), \(status), \(detail)"
+        let name = interface.displayName
+        switch interface.state {
+        case .active:
+            let ip = interface.ipv4 ?? "no address"
+            let speed = speedDescription(interface.linkSpeedMbps)
+            return speed.isEmpty ? "\(name), active, \(ip)" : "\(name), active, \(ip), \(speed)"
+        case .obtaining:
+            return "\(name), obtaining address"
+        case .dhcpTimeout:
+            return "\(name), DHCP timeout, no address"
+        case .noLink:
+            return "\(name), no link"
         }
-        return "\(interface.displayName), \(status)"
     }
 }
 

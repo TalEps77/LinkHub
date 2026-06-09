@@ -1,5 +1,5 @@
 # generated: 2026-05-09
-# last_updated: 2026-06-08 (Epic 2 complete; Epic 3 next)
+# last_updated: 2026-06-09 (Epic 3 complete; Epic 4 next)
 # project: LinkHub
 # project_key: NOKEY
 # tracking_system: file-system
@@ -60,13 +60,13 @@ development_status:
   2-6-forget-network-open-wi-fi-settings-handoffs: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-ethernetmonitor-scdynamicstore-sendable-extraction: done
   3-2-appstate-dual-monitor-sink-refactor: done
   3-3-ethernetsection-ethernetrow-with-four-states: done
   3-4-statusbaricon-ethernet-path-300-ms-crossfade: done
   3-5-cable-out-1-5-s-grace-section-reorder-animation: done
-  3-6-multi-ethernet-enumeration-overflow-row-voiceover-and-resource-baseline: backlog
+  3-6-multi-ethernet-enumeration-overflow-row-voiceover-and-resource-baseline: done
   epic-3-retrospective: optional
 
   epic-4: backlog

@@ -73,16 +73,33 @@ final class EthernetRowTests: XCTestCase {
 
     // MARK: - accessibilityLabel
 
-    func testAccessibilityLabelActiveCombinesDetail() {
+    // UX-DR23 templates (Story 3.6).
+
+    func testAccessibilityLabelActive() {
         let i = iface(name: "Thunderbolt Ethernet", speed: 1000, ipv4: "192.168.1.5", state: .active)
         XCTAssertEqual(
             EthernetRow.accessibilityLabel(for: i),
-            "Thunderbolt Ethernet, Active, 192.168.1.5 • 1.0 Gbps"
+            "Thunderbolt Ethernet, active, 192.168.1.5, 1.0 Gbps"
         )
     }
 
-    func testAccessibilityLabelNonActive() {
-        let i = iface(name: "USB-C LAN", state: .dhcpTimeout)
-        XCTAssertEqual(EthernetRow.accessibilityLabel(for: i), "USB-C LAN, DHCP timeout")
+    func testAccessibilityLabelActiveNoAddressNoSpeed() {
+        let i = iface(name: "USB LAN", speed: nil, ipv4: nil, state: .active)
+        XCTAssertEqual(EthernetRow.accessibilityLabel(for: i), "USB LAN, active, no address")
+    }
+
+    func testAccessibilityLabelObtaining() {
+        XCTAssertEqual(EthernetRow.accessibilityLabel(for: iface(name: "USB-C LAN", state: .obtaining)),
+                       "USB-C LAN, obtaining address")
+    }
+
+    func testAccessibilityLabelDhcpTimeout() {
+        XCTAssertEqual(EthernetRow.accessibilityLabel(for: iface(name: "USB-C LAN", state: .dhcpTimeout)),
+                       "USB-C LAN, DHCP timeout, no address")
+    }
+
+    func testAccessibilityLabelNoLink() {
+        XCTAssertEqual(EthernetRow.accessibilityLabel(for: iface(name: "Dock Ethernet", state: .noLink)),
+                       "Dock Ethernet, no link")
     }
 }

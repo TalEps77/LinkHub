@@ -12,6 +12,11 @@ import SwiftUI
 /// imports `SwiftUI` only.
 struct EthernetSection: View {
     @EnvironmentObject var appState: AppState
+    /// Dismisses the popover before the Network Settings overflow handoff (Story 3.6).
+    @Environment(\.dismissPopover) private var dismissPopover
+
+    /// Max interfaces rendered inline before the rest collapse into the overflow row (UX-DR10).
+    static let inlineLimit = 2
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,9 +25,30 @@ struct EthernetSection: View {
                 ForEach(Self.displayedInterfaces(from: appState.networkState)) { interface in
                     EthernetRow(interface: interface)
                 }
+                let overflow = Self.overflowCount(from: appState.networkState)
+                if overflow > 0 {
+                    overflowRow(count: overflow)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "+ N more in Settings…" row (FR21/FR22, UX-DR10). Dismisses the popover, then opens the
+    /// macOS Network settings pane (UX-DR32). `.plain` button styled like the Wi-Fi footers.
+    private func overflowRow(count: Int) -> some View {
+        Button("+ \(count) more in Settings…") {
+            dismissPopover()
+            SystemSettingsService.openNetworkSettings()
+        }
+        .buttonStyle(.plain)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .padding(.horizontal, PanelLayout.rowHorizontalPadding)
+        .padding(.vertical, PanelLayout.rowVerticalPadding)
+        .accessibilityLabel("\(count) more interfaces in Settings")
     }
 
     private var header: some View {
@@ -37,14 +63,27 @@ struct EthernetSection: View {
         .padding(.vertical, PanelLayout.sectionHeaderVerticalPadding)
     }
 
-    /// The interfaces rendered inline, in priority order: active interfaces first (healthiest at
-    /// the top, UX-DR10), then everything else preserving the monitor's order, capped at the top 2.
-    /// Pure function — unit-tested directly without instantiating SwiftUI (mirrors
-    /// `WiFiSection.displayedNetworks`). Full multi-interface sort + "+N more" overflow is Story 3.6.
+    /// All interfaces that have link (cable in), sorted active-first then by BSD name (FR20 —
+    /// stable identifier tie-break). Cable-out `.noLink` interfaces are excluded: the section only
+    /// represents interfaces with a cable. Pure function.
+    static func linkedSorted(from state: NetworkState) -> [EthernetInterface] {
+        state.ethernetInterfaces
+            .filter { $0.state != .noLink }
+            .sorted { lhs, rhs in
+                if lhs.isActive != rhs.isActive { return lhs.isActive }   // active first
+                return lhs.bsdName < rhs.bsdName                          // tie-break: BSD name
+            }
+    }
+
+    /// The interfaces rendered inline — the top `inlineLimit` (2) of `linkedSorted` (UX-DR10).
+    /// Unit-tested directly without instantiating SwiftUI (mirrors `WiFiSection.displayedNetworks`).
     static func displayedInterfaces(from state: NetworkState) -> [EthernetInterface] {
-        let active = state.ethernetInterfaces.filter { $0.isActive }
-        let inactive = state.ethernetInterfaces.filter { !$0.isActive }
-        return Array((active + inactive).prefix(2))
+        Array(linkedSorted(from: state).prefix(inlineLimit))
+    }
+
+    /// How many linked interfaces are hidden behind the "+N more" overflow row (FR21).
+    static func overflowCount(from state: NetworkState) -> Int {
+        max(0, linkedSorted(from: state).count - inlineLimit)
     }
 }
 

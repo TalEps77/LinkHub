@@ -9,4 +9,12 @@ final class SystemSettingsServiceTests: XCTestCase {
             "x-apple.systempreferences:com.apple.wifi-settings-extension"
         )
     }
+
+    func testNetworkSettingsURLMatchesSpec() {
+        // FR22: the multi-Ethernet overflow handoff (Story 3.6).
+        XCTAssertEqual(
+            SystemSettingsService.networkSettingsURL.absoluteString,
+            "x-apple.systempreferences:com.apple.Network-Settings.extension"
+        )
+    }
 }

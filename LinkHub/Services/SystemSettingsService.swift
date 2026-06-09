@@ -9,9 +9,18 @@ enum SystemSettingsService {
     /// Wi-Fi settings pane (Forget / known-network management; FR36, FR38).
     static let wifiSettingsURL = URL(string: "x-apple.systempreferences:com.apple.wifi-settings-extension")!
 
+    /// Network settings pane (multi-Ethernet overflow handoff; FR22, Story 3.6).
+    static let networkSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Network-Settings.extension")!
+
     /// Opens the Wi-Fi settings pane. Callers dismiss the popover first (UX-DR32).
     @MainActor
     static func openWiFiSettings() {
         NSWorkspace.shared.open(wifiSettingsURL)
+    }
+
+    /// Opens the macOS Network settings pane. Callers dismiss the popover first (UX-DR32).
+    @MainActor
+    static func openNetworkSettings() {
+        NSWorkspace.shared.open(networkSettingsURL)
     }
 }
