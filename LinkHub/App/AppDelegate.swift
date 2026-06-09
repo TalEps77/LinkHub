@@ -8,10 +8,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return AppState(wifiMonitor: wifi)
     }()
     private var statusItemController: StatusItemController?
+    /// Retained for the app lifetime so Sparkle's scheduled background checks keep running
+    /// (Story 4.3). Released only at process exit. Instantiated after the status item is up and
+    /// before the monitors start, per the Story 4.3 AC ordering.
+    private var updaterController: UpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItemController = StatusItemController(appState: appState)
-        statusItemController?.start()
+        let statusItemController = StatusItemController(appState: appState)
+        self.statusItemController = statusItemController
+        statusItemController.start()
+
+        // Story 4.3: bring up the Sparkle updater after the status item is started and before the
+        // monitors, then hand it to the status-item menu so "Check for Updates…" is enabled.
+        let updaterController = UpdaterController()
+        self.updaterController = updaterController
+        statusItemController.setUpdaterController(updaterController)
+
         appState.startMonitors()
     }
 

@@ -16,10 +16,10 @@ xcuserdata/
 *.perspectivev3
 
 # === Swift Package Manager ===
-# Uncomment when Sparkle 2 is added via SPM in Story 4.3:
-# .build/
-# .swiftpm/
-# Packages/
+# Sparkle 2 added via SPM in Story 4.3:
+.build/
+.swiftpm/
+Packages/
 
 # === macOS ===
 .DS_Store
@@ -41,6 +41,14 @@ xcuserdata/
 # === Secrets / Environment ===
 .env
 secrets.plist
+# Signing material — never commit. The Sparkle EdDSA private key and the
+# notarytool API key live in the macOS Keychain on the release machine only;
+# any on-disk key/cert is excluded defensively.
+*.key
+*.pem
+*.p8
+*.p12
+*.cer
 
 # === Local agent / planning tooling (project-specific) ===
 .claude/

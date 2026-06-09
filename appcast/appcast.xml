@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LinkHub Sparkle appcast feed.
+
+  Published via GitHub Pages at:
+      https://talepstein.github.io/LinkHub/appcast.xml
+  This URL is compiled into every shipped binary as SUFeedURL (Info.plist,
+  set by Story 4.3) and must NEVER change after the first public release.
+
+  scripts/update-appcast.sh appends/updates an <item> per release, filling in
+  the EdDSA signature (sparkle:edSignature) and enclosure length. The EdDSA
+  private key lives ONLY in the macOS Keychain on the release machine — it is
+  never written to disk or committed. Sparkle verifies each update against
+  SUPublicEDKey (Info.plist); a signature mismatch causes Sparkle to REJECT
+  the update and refuse to install it.
+
+  Versioning rule (docs/09 § Versioning Scheme):
+    sparkle:shortVersionString  = CFBundleShortVersionString = MAJOR.MINOR.PATCH (SemVer, shown to users)
+    sparkle:version             = CFBundleVersion            = monotonically increasing integer
+                                                               (Sparkle/Gatekeeper compare numerically;
+                                                                must never decrease, never dotted)
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>LinkHub</title>
+    <link>https://talepstein.github.io/LinkHub/appcast.xml</link>
+    <description>LinkHub release feed</description>
+    <language>en</language>
+
+    <!-- PLACEHOLDER ITEM — not a real release. -->
+    <!-- scripts/update-appcast.sh replaces this block (or inserts a real <item>
+         above it) on the first release. Sparkle ignores it harmlessly: the
+         enclosure URL is non-existent and the edSignature is empty, so it can
+         never be offered to a client as a valid update.
+
+    <item>
+      <title>Version 0.0.0 (placeholder — not a release)</title>
+      <sparkle:version>0</sparkle:version>
+      <sparkle:shortVersionString>0.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <pubDate>Thu, 01 Jan 1970 00:00:00 +0000</pubDate>
+      <enclosure
+        url="https://talepstein.github.io/LinkHub/LinkHub-0.0.0.dmg"
+        sparkle:edSignature=""
+        length="0"
+        type="application/octet-stream"/>
+    </item>
+    -->
+  </channel>
+</rss>

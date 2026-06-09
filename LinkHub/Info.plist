@@ -32,5 +32,9 @@
     <string>LinkHub scans for nearby Wi-Fi networks. Apple requires location access for this on macOS 10.15 and later.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>SUFeedURL</key>
+    <string>https://talepstein.github.io/LinkHub/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>REPLACE_WITH_EDDSA_PUBLIC_KEY</string>
 </dict>
 </plist>

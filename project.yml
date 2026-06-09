@@ -14,6 +14,13 @@ configs:
   Debug: debug
   Release: release
 
+# Story 4.3: Sparkle 2 is the first and only SPM dependency (NFR36). Pinned to the 2.x major via
+# `from` so XcodeGen resolves the latest compatible 2.x at generate time.
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -80,6 +87,8 @@ targets:
       - path: LinkHub/UI/Windows
         type: group
         optional: true
+    dependencies:
+      - package: Sparkle
     settings:
       base:
         PRODUCT_NAME: LinkHub

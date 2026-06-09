@@ -16,6 +16,11 @@ final class AppState: ObservableObject {
     /// link is lost so transient dock/cable flutter doesn't flicker the UI (FR13). The View reads
     /// this (not the raw interface list) to decide whether to render `EthernetSection`.
     @Published private(set) var isEthernetSectionVisible: Bool = false
+    /// Source of truth for the "Launch at Login" toggle (Story 4.1). The `didSet` persists the
+    /// bool only — it deliberately does NOT call `SMAppService`, so unit tests that flip this
+    /// property directly never touch the (headless-unsafe) login-item registration. The
+    /// system-side register/unregister is driven through `setLaunchAtLogin(_:)`, which the
+    /// status-item menu calls.
     @Published var launchAtLogin: Bool {
         didSet {
             UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
@@ -223,6 +228,15 @@ final class AppState: ObservableObject {
         } catch {
             Log.servicesKeychain.error("Keychain remove failed on Forget: \(String(describing: error), privacy: .public)")
         }
+    }
+
+    /// Applies a new "Launch at Login" preference (Story 4.1, FR43/FR44). Updates the published
+    /// bool (which persists via `didSet`) and drives `SMAppService` register/unregister through
+    /// `LaunchAtLoginService`. Called from the status-item menu (Story 4.2) — never from unit
+    /// tests, so `SMAppService` is not exercised on a headless host.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLogin = enabled
+        LaunchAtLoginService.setEnabled(enabled)
     }
 
     private func rebuildState(

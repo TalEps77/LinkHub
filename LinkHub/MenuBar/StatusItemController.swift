@@ -29,6 +29,13 @@ final class StatusItemController {
     /// to post the "Wi-Fi networks loading" VoiceOver announcement.
     private var announceNetworksLoadingPending: Bool = false
     private let symbolConfig = NSImage.SymbolConfiguration(pointSize: 17, weight: .regular, scale: .medium)
+    /// Backs the right-click menu (Story 4.2). Built lazily so it picks up the updater controller
+    /// once `AppDelegate` wires it via `setUpdaterController(_:)`.
+    private var updaterController: UpdaterController?
+    /// Retains the current `StatusItemMenu` while its menu is on screen. `NSMenuItem.target` and
+    /// `NSMenu.delegate` are weak, so without a strong reference here the menu's actions and
+    /// `menuNeedsUpdate` would never fire (the controller would deallocate immediately).
+    private var menuController: StatusItemMenu?
 
     #if DEBUG
     var isPopoverShown: Bool { popoverController.isShown }
@@ -43,6 +50,15 @@ final class StatusItemController {
         )
         statusItem.button?.target = self
         statusItem.button?.action = #selector(handleStatusItemClick)
+        // UX-DR35: route both left- and right-click to the action so a single handler can branch
+        // on the current event — left toggles the popover (Epic 1), right shows the NSMenu (4.2).
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    /// Wires the Sparkle updater (Story 4.3) so the right-click menu's "Check for Updates…" item
+    /// is enabled. Called by `AppDelegate` after the updater is instantiated.
+    func setUpdaterController(_ controller: UpdaterController) {
+        self.updaterController = controller
     }
 
     func start() {
@@ -226,11 +242,35 @@ final class StatusItemController {
     }
 
     @objc private func handleStatusItemClick() {
-        if popoverController.isShown {
-            popoverController.close()
+        // UX-DR35: a right-click (or control-click, which AppKit reports as a right mouse event)
+        // shows the app menu; a plain left-click toggles the popover (Epic 1 behavior unchanged).
+        let event = NSApp.currentEvent
+        let isRightClick = event?.type == .rightMouseUp
+            || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true)
+
+        if isRightClick {
+            showMenu()
         } else {
-            popoverController.show()
+            if popoverController.isShown {
+                popoverController.close()
+            } else {
+                popoverController.show()
+            }
         }
+    }
+
+    /// Presents the right-click NSMenu transiently (Story 4.2). Assigning `statusItem.menu`,
+    /// clicking, then clearing it keeps the menu from hijacking left-clicks — with a persistent
+    /// `statusItem.menu`, AppKit would route every click to the menu and the popover toggle would
+    /// never fire.
+    private func showMenu() {
+        guard let button = statusItem.button else { return }
+        // Retain the controller (weak target/delegate) for as long as the menu is tracking.
+        let menuController = StatusItemMenu(appState: appState, updaterController: updaterController)
+        self.menuController = menuController
+        statusItem.menu = menuController.makeMenu()
+        button.performClick(nil)
+        statusItem.menu = nil
     }
 
     func tearDown() {

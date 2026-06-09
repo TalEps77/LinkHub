@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ExportOptions.plist — Developer ID direct distribution (NOT Mac App Store).
+
+  Consumed by `xcodebuild -exportArchive -exportOptionsPlist ExportOptions.plist`
+  in scripts/notarize.sh. Produces a Developer ID Application-signed LinkHub.app
+  with Hardened Runtime enabled (set in project.yml Release config) and the
+  Location entitlement only.
+
+  Substitute <TEAMID> with your Apple Developer Team ID before use, OR let
+  scripts/notarize.sh inject it from the LINKHUB_TEAM_ID env var into a temp copy.
+
+  See docs/09-distribution-release.md § Code Signing Setup (normative).
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>developer-id</string>
+
+    <key>teamID</key>
+    <string>__TEAMID__</string>
+
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <!-- Notarization is performed explicitly by notarytool in notarize.sh,
+         not by xcodebuild during export. -->
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

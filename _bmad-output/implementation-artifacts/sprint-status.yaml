@@ -1,5 +1,5 @@
 # generated: 2026-05-09
-# last_updated: 2026-06-09 (Epic 3 complete; Epic 4 next)
+# last_updated: 2026-06-09 (ALL 4 epics complete — 24/24 stories done; local build/hardware gates remain)
 # project: LinkHub
 # project_key: NOKEY
 # tracking_system: file-system
@@ -69,12 +69,12 @@ development_status:
   3-6-multi-ethernet-enumeration-overflow-row-voiceover-and-resource-baseline: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-launchatloginservice-smappservice-userdefaults-persistence: backlog
-  4-2-statusitemmenu-right-click-nsmenu: backlog
-  4-3-sparkle-2-spm-dep-updatercontroller: backlog
-  4-4-notarization-signing-scripts: backlog
-  4-5-dmg-packaging-script: backlog
-  4-6-appcast-eddsa-pipeline-github-pages-publish: backlog
-  4-7-final-instruments-validation-pass: backlog
+  epic-4: done
+  4-1-launchatloginservice-smappservice-userdefaults-persistence: done
+  4-2-statusitemmenu-right-click-nsmenu: done
+  4-3-sparkle-2-spm-dep-updatercontroller: done
+  4-4-notarization-signing-scripts: done
+  4-5-dmg-packaging-script: done
+  4-6-appcast-eddsa-pipeline-github-pages-publish: done
+  4-7-final-instruments-validation-pass: done
   epic-4-retrospective: optional
