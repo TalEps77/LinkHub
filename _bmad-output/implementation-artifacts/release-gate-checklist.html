@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinkHub — Local Verification & Release-Gate Checklist</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         max-width: 920px; margin: 2rem auto; padding: 0 1.2rem; color: #1d1d1f; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e8e8ed; background: #1c1c1e; }
+    h1,h2 { color: #f5f5f7; } code,pre { background: #2c2c2e; } blockquote { color: #aeaeb2; border-color:#3a3a3c; }
+    .note { background:#2c2c2e; border-color:#0a84ff; } }
+  h1 { font-size: 1.7rem; border-bottom: 2px solid #0071e3; padding-bottom: .3rem; }
+  h2 { font-size: 1.18rem; margin-top: 2rem; border-bottom: 1px solid #d2d2d7; padding-bottom: .2rem; }
+  blockquote { margin: 1rem 0; padding: .1rem 1rem; border-left: 4px solid #d2d2d7; color: #515154; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #f5f5f7; padding: .1em .35em; border-radius: 4px; font-size: .88em; }
+  pre { background: #f5f5f7; padding: .9rem 1rem; border-radius: 8px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  ul { list-style: none; padding-left: .3rem; }
+  li { margin: .35rem 0; padding-left: 1.6rem; text-indent: -1.6rem; }
+  li::before { content: "☐"; color: #0071e3; font-weight: 700; margin-right: .55rem; }
+  .note { background: #f0f7ff; border: 1px solid #0071e3; border-radius: 8px; padding: .2rem 1rem; }
+  .sub { font-style: italic; color: #6e6e73; margin: .4rem 0; }
+</style>
+</head>
+<body>
+<h1>LinkHub — Local Verification &amp; Release-Gate Checklist</h1>
+<div class="note">
+<p><strong>Why this exists.</strong> LinkHub's implementation is authored in a Linux/web environment with
+no Xcode/swiftc (per <code>CLAUDE.md</code>). Every story's code + tests are written to Swift 6
+strict-concurrency correctness by review, but the actual <strong>build, test run, and
+hardware-dependent verification must execute on a Mac with Xcode 16</strong>. This is the single
+source of truth for those deferred gates. A story is "done" in the sprint tracker when code + tests
++ review are complete; it is <strong>release-verified</strong> only when the relevant rows below
+pass on real hardware.</p>
+</div>
+
+<h2>A. Build &amp; test (after every story; required before release)</h2>
+<pre><code>xcodegen generate
+xcodebuild -project LinkHub.xcodeproj -scheme LinkHub -configuration Debug build      # zero warnings (NFR33)
+xcodebuild -project LinkHub.xcodeproj -scheme LinkHub -configuration Release build    # zero strict-concurrency warnings
+xcodebuild -project LinkHub.xcodeproj -scheme LinkHub -configuration Debug test       # all tests pass</code></pre>
+<ul>
+<li><code>xcodegen generate</code> picks up all new files via recursive <code>path:</code> globs — verify post-generation.</li>
+<li>Debug build: <strong>zero warnings</strong> (NFR33).</li>
+<li>Release build: <strong>zero Swift 6 strict-concurrency warnings/errors</strong>. The Story 1.1 Release "isn't code signed but requires entitlements" warning is expected until Story 4.4.</li>
+<li>Full test suite green (no regressions across epics).</li>
+</ul>
+<p class="sub">Highest-risk compile spots flagged during web authoring (check first if build fails):</p>
+<ul>
+<li><code>PopoverController</code> <code>DismissBox</code> + <code>\.dismissPopover</code> <code>@MainActor () -&gt; Void</code> typing (Story 1.5).</li>
+<li><code>WiFiSection.wifiPowerBinding</code> setter <code>Task</code> capture (Story 2.5).</li>
+<li><code>EthernetMonitor</code> <code>@convention(c)</code> SCDynamicStore callback + <code>Unmanaged</code> context + Sendable snapshot hop (Story 3.1).</li>
+<li><code>WiFiRow</code> <code>@ViewBuilder body</code> if/else context-menu attach returns one <code>some View</code> (Story 2.6).</li>
+</ul>
+
+<h2>B. Accessibility — VoiceOver (Cmd+F5)</h2>
+<ul>
+<li>Each <code>WiFiRow</code> reads the UX-DR22 combined label; decorative glyphs not separately announced (1.4/1.6).</li>
+<li>Menu-bar icon reads UX-DR24 labels (1.6).</li>
+<li>Announcements: disconnect, power on/off, grant-after-denial, connect, Ethernet in/out (1.5/1.6/2.3/3.5).</li>
+<li><code>EthernetRow</code> reads UX-DR23 by state; state dots <code>accessibilityHidden</code> (3.6).</li>
+</ul>
+
+<h2>C. Accessibility — Reduce Motion</h2>
+<ul>
+<li>Wi-Fi list insert/remove: 0.2 s fade off / instant on (1.4).</li>
+<li>Status-icon symbol change: 300 ms crossfade off / instant on (1.6/3.4).</li>
+<li>Row expand/collapse + section reorder: 250 ms off / instant on (2.3/3.5).</li>
+<li>Obtaining-state dot pulse: 1.2 s loop off / static on (3.3).</li>
+</ul>
+
+<h2>D. Functional — Wi-Fi (<code>LINKHUB_MOCK_WIFI=1</code> where needed)</h2>
+<ul>
+<li>Scan-on-open; connected row first with checkmark + semibold (1.4).</li>
+<li>Location denied → <code>LocationDeniedView</code>; Settings handoff; grant auto-retries without restart (1.5).</li>
+<li>Open single-tap connect; WPA inline password; wrong password caption, field cleared, stays expanded (2.3).</li>
+<li>"Other Network…" hidden-network join (in-popover) (2.4).</li>
+<li>Power toggle flips real radio; off → "Wi-Fi: Off", list hidden, association dropped (2.5).</li>
+<li>Captive connect → default browser opens <code>captive.apple.com</code> (2.5).</li>
+<li>Right-click known network → Forget / Open in Settings; unknown rows no menu; Forget clears Keychain (2.6).</li>
+<li>Keychain: persist only on success; re-join no re-prompt (2.2/2.3).</li>
+</ul>
+
+<h2>E. Functional — Ethernet (Epic 3; needs adapter)</h2>
+<ul>
+<li>Cable in → <code>cable.connector</code> within 1.5 s; <code>EthernetSection</code> promoted above Wi-Fi (3.3/3.4).</li>
+<li>Four states render with dot + text label (3.3).</li>
+<li>Cable out → 1.5 s grace before hide; transient unplug no flicker (3.5).</li>
+<li>Multiple interfaces: top 2 inline + "+ N more in Settings…" overflow → Network Settings (3.6).</li>
+<li>Survives sleep/wake, router reset, dock reconnect, VPN toggle (3.5, NFR11).</li>
+</ul>
+
+<h2>F. Performance / reliability — Instruments (Apple Silicon)</h2>
+<ul>
+<li>Popover first paint ≤200 ms cold / ≤100 ms warm (NFR2) (1.4).</li>
+<li>Idle 60 s: ≤80 MB resident, ≤0.5% avg CPU (FR48/FR49) — <strong>Epic 1 baseline</strong> (1.6).</li>
+<li>Epic 2 regression: same budget after 10 connect/disconnect/forget cycles (2.6).</li>
+<li>Epic 3 regression: same budget + 1-hour zero LinkHub leaks (3.6, NFR8).</li>
+<li><strong>Story 4.7 final pass:</strong> 1-hour Allocations + Leaks + Time Profiler; ≤80 MB / ≤0.5% / zero leaks; ≤±5% vs baselines — <strong>verification-only; cannot run without hardware.</strong></li>
+</ul>
+
+<h2>G. Distribution (Epic 4 — needs Developer ID cert + notary creds + signing Mac)</h2>
+<ul>
+<li>Sparkle 2 SPM resolves; <code>SUPublicEDKey</code> / feed URL in Info.plist (4.3).</li>
+<li><code>scripts/notarize.sh</code>: archive → export (Developer ID) → notarytool → staple; codesign valid; Hardened Runtime + Location entitlement only (4.4).</li>
+<li><code>scripts/make-dmg.sh</code>: signed/stapled DMG with <code>/Applications</code> symlink; Gatekeeper-clean (4.5).</li>
+<li><code>scripts/update-appcast.sh</code>: EdDSA-signed item; GitHub Pages feed; Sparkle verifies + rejects mismatch (4.6).</li>
+</ul>
+
+<h2>H. Spec-divergence reconciliation</h2>
+<ul>
+<li>Section header <code>.caption</code> UPPERCASE vs PRD 04 D12 (1.4).</li>
+<li>Signal bars custom <code>RoundedRectangle</code> vs epic "SF Symbol" (macOS 14+ only) (1.4).</li>
+<li>Empty state text-only <code>.callout</code> vs PRD 04 D17 icon (1.4).</li>
+<li><code>isPowered</code> modeled as existing <code>isEnabled</code> (2.5).</li>
+<li>"Known network" = LinkHub-remembered (no public system API) (2.6).</li>
+</ul>
+</body>
+</html>
