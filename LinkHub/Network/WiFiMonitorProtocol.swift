@@ -1,6 +1,6 @@
 // Story 2.1 adds `associate(network:password:)` returning the typed `WiFiConnectionFailure`
-// error path. Keychain persistence (Story 2.2), `disconnect()` / captive handling (Story 2.5),
-// and power toggle (Story 2.5) are still out of scope.
+// error path. Story 2.5 adds `setPowered(_:)` (Wi-Fi power toggle, FR35). Keychain persistence
+// lives in Story 2.2. The power *state* is the existing `isEnabled` flag (CWInterface.powerOn()).
 
 import Foundation
 import Combine
@@ -38,4 +38,9 @@ protocol WiFiMonitorProtocol: AnyObject {
     /// completion (success or failure) the monitor is left in a clean, retryable state (NFR10).
     /// UI rendering of the failure is Story 2.3; this method only delivers the typed contract.
     func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure>
+
+    /// Flips the CoreWLAN interface power state (FR35). The resulting power state surfaces via the
+    /// existing `isEnabled` flag (driven by `powerStateDidChange` events + an immediate refresh).
+    /// Turning power off drops any current association (FR34). Non-throwing — failures are logged.
+    func setPowered(_ on: Bool) async
 }

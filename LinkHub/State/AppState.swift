@@ -132,6 +132,15 @@ final class AppState: ObservableObject {
         KeychainService.password(forSSID: ssid)
     }
 
+    /// Flips Wi-Fi power via the monitor (FR35). Routed through `AppState` so the View never calls
+    /// the monitor directly (NFR35), mirroring `connect`. The new power state surfaces through the
+    /// normal `networkState.isWiFiEnabled` pipeline; the "Wi-Fi turned on/off" announcement is
+    /// posted by `StatusItemController` on that flag's edge (Story 1.6), keeping NSAccessibility in
+    /// the AppKit layer.
+    func setWiFiPower(_ on: Bool) async {
+        await wifiMonitor.setPowered(on)
+    }
+
     private func rebuildState(
         networks: [WiFiNetwork],
         connected: WiFiNetwork?,

@@ -240,6 +240,15 @@ final class AppStateTests: XCTestCase {
         _ = await attempt.value
         XCTAssertNil(state.connectingNetworkID, "ID must clear after the attempt resolves")
     }
+
+    @MainActor
+    func testSetWiFiPowerForwardsToMonitor() async {
+        let stub = StubWiFiMonitor()
+        let state = AppState(wifiMonitor: stub)
+        await state.setWiFiPower(false)
+        await state.setWiFiPower(true)
+        XCTAssertEqual(stub.setPoweredCalls, [false, true], "setWiFiPower must forward to the monitor (NFR35)")
+    }
     #endif
 }
 
@@ -266,4 +275,6 @@ private final class StubWiFiMonitor: WiFiMonitorProtocol {
     func stop() { stopCallCount += 1 }
     func requestScan() async {}
     func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> { .success(()) }
+    private(set) var setPoweredCalls: [Bool] = []
+    func setPowered(_ on: Bool) async { setPoweredCalls.append(on) }
 }

@@ -228,6 +228,25 @@ final class WiFiMonitor: NSObject, CWEventDelegate, CLLocationManagerDelegate, W
         return await detached.value
     }
 
+    /// FR35: flip the CoreWLAN interface power. The blocking `setPower(_:)` runs off the MainActor
+    /// (like `performAssociate`); on return we `refreshFromCurrentInterface()` for immediacy, and
+    /// the `powerStateDidChange` event reconciles independently. Errors are logged, not thrown —
+    /// the toggle is best-effort and the UI reflects the actual `isEnabled` the refresh reads back.
+    func setPowered(_ on: Bool) async {
+        guard isStarted else { return }
+        let detached = Task.detached(priority: .userInitiated) {
+            guard let iface = CWWiFiClient.shared().interface() else { return }
+            do {
+                try iface.setPower(on)
+            } catch {
+                Log.networkWiFi.error("setPower(\(on, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        await detached.value
+        // Reflect immediately so the toggle and list state don't wait on the debounced event.
+        refreshFromCurrentInterface()
+    }
+
     /// Pure-ish CoreWLAN association run off the MainActor. Re-finds the live `CWNetwork` by
     /// BSSID (or SSID for hidden networks) from a fresh scan, calls `associate(to:password:)`, and
     /// maps any thrown error to `WiFiConnectionFailure`. Returns a `Sendable` `Result`; no

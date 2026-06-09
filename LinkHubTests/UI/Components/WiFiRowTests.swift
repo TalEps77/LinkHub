@@ -77,4 +77,10 @@ final class WiFiRowTests: XCTestCase {
         XCTAssertEqual(WiFiRow.errorCaption(for: .unknown(code: 42)),
                        WiFiRow.errorCaption(for: .unknown(code: -3999)))
     }
+
+    // MARK: - Story 2.5 — captive-portal handoff (FR33)
+
+    func testCaptivePortalURL() {
+        XCTAssertEqual(WiFiRow.captivePortalURL.absoluteString, "http://captive.apple.com")
+    }
 }

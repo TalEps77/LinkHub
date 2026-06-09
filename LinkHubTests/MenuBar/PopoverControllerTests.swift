@@ -145,4 +145,5 @@ private final class PopoverStubWiFiMonitor: WiFiMonitorProtocol {
     func stop() {}
     func requestScan() async {}
     func associate(network: WiFiNetwork, password: String?) async -> Result<Void, WiFiConnectionFailure> { .success(()) }
+    func setPowered(_ on: Bool) async {}
 }

@@ -106,5 +106,17 @@ final class MockWiFiMonitor: WiFiMonitorProtocol {
         }
         return nextAssociateResult
     }
+
+    func setPowered(_ on: Bool) async {
+        isEnabled = on
+        if on {
+            networks = Self.sampleNetworks
+            connectedNetwork = Self.sampleNetworks.first { $0.isConnected }
+        } else {
+            // FR34: powering off drops the association and clears the list.
+            connectedNetwork = nil
+            networks = []
+        }
+    }
 }
 #endif

@@ -101,9 +101,8 @@ final class WiFiSectionTests: XCTestCase {
         XCTAssertEqual(mode, .list)
     }
 
-    func testContentModeNotEmptyStateWhenWiFiDisabled() {
-        // Empty + disabled must not show the "no networks found" empty state (Story 1.4 rule);
-        // falls through to .list (the disabled/off copy is Epic 2 territory).
+    func testContentModeWiFiOffWhenDisabled() {
+        // Story 2.5: Wi-Fi off shows the "Wi-Fi: Off" state, not the list or empty copy.
         let mode = WiFiSection.contentMode(
             locationDenied: false,
             isEmpty: true,
@@ -111,7 +110,19 @@ final class WiFiSectionTests: XCTestCase {
             isWiFiEnabled: false,
             isWiFiHardwareAvailable: true
         )
-        XCTAssertEqual(mode, .list)
+        XCTAssertEqual(mode, .wifiOff)
+    }
+
+    func testContentModeWiFiOffWinsOverLocationDeniedAndScanning() {
+        // Power-off is the highest-priority content state (FR34): nothing to scan or deny when off.
+        let mode = WiFiSection.contentMode(
+            locationDenied: true,
+            isEmpty: false,
+            isScanning: true,
+            isWiFiEnabled: false,
+            isWiFiHardwareAvailable: true
+        )
+        XCTAssertEqual(mode, .wifiOff)
     }
 
     // MARK: - LocationDeniedView Settings deep-link (FR40)

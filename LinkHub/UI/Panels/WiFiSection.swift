@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// The Wi-Fi section of the panel: section header (label + non-functional power toggle)
-/// plus the network list with scanning / empty / populated states.
+/// The Wi-Fi section of the panel: section header (label + power toggle) plus the network list
+/// with its content states (off / location-denied / scanning / empty / populated).
 ///
-/// Read-only for Epic 1. The power toggle is bound to a `@State` stub (epic AC #2);
-/// Epic 2 / PRD 06 Story 2.5 wires it to `WiFiMonitor.setPower(_:)`. Reads state via
-/// `@EnvironmentObject` only — never subscribes to a monitor directly (NFR35).
+/// Story 2.5 wires the header `Toggle` to `AppState.setWiFiPower(_:)` (FR35); when the radio is
+/// off the list is replaced by a "Wi-Fi: Off" label. Reads state via `@EnvironmentObject` only —
+/// never subscribes to a monitor directly (NFR35).
 struct WiFiSection: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
@@ -13,16 +13,25 @@ struct WiFiSection: View {
     /// defaults to a no-op so the section renders standalone in previews/tests. Using the
     /// environment action (not a closure through `init`) keeps `WiFiSection`'s API stable.
     @Environment(\.showOtherNetwork) private var showOtherNetwork
-    @State private var wifiPowerStub: Bool = true   // epic AC #2 — non-functional
+
+    /// Drives the header power `Toggle` (Story 2.5). Reads the live power state from the monitor's
+    /// `isWiFiEnabled` (no local `@State` to drift from reality); the setter routes through
+    /// `AppState` (NFR35). The flip resolves asynchronously and re-renders via `networkState`.
+    private var wifiPowerBinding: Binding<Bool> {
+        Binding(
+            get: { appState.networkState.isWiFiEnabled },
+            set: { newValue in Task { await appState.setWiFiPower(newValue) } }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             content
-            // "Other Network…" footer (Story 2.4). Hidden in the location-denied state, where the
-            // list is fully replaced by LocationDeniedView. The "Open Network Settings…" footer
-            // link is Story 2.6 — not added here.
-            if !appState.wifiLocationDenied {
+            // "Other Network…" footer (Story 2.4). Hidden when the list itself is hidden — i.e.
+            // location-denied (LocationDeniedView) or Wi-Fi off. The "Open Network Settings…"
+            // footer link is Story 2.6 — not added here.
+            if !appState.wifiLocationDenied && appState.networkState.isWiFiEnabled {
                 otherNetworkFooter
             }
         }
@@ -49,7 +58,7 @@ struct WiFiSection: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
             Spacer()
-            Toggle("", isOn: $wifiPowerStub)
+            Toggle("", isOn: wifiPowerBinding)
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .accessibilityLabel("Wi-Fi")
@@ -71,6 +80,9 @@ struct WiFiSection: View {
             isWiFiEnabled: appState.networkState.isWiFiEnabled,
             isWiFiHardwareAvailable: appState.networkState.isWiFiHardwareAvailable
         ) {
+        case .wifiOff:
+            // FR34 / UX-DR12 / UX-DR33: radio off — list hidden, plain "Wi-Fi: Off" label remains.
+            wifiOffState
         case .locationDenied:
             // UX-DR12 / UX-DR14: Location denial replaces the list entirely.
             LocationDeniedView()
@@ -105,17 +117,25 @@ struct WiFiSection: View {
             .frame(maxWidth: .infinity, minHeight: PanelLayout.rowHeight * 2, alignment: .center)
     }
 
+    private var wifiOffState: some View {
+        Text("Wi-Fi: Off")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: PanelLayout.rowHeight, alignment: .center)
+    }
+
     /// The mutually-exclusive content states the section can display, in priority order.
     enum ContentMode: Equatable {
+        case wifiOff
         case locationDenied
         case scanning
         case empty
         case list
     }
 
-    /// Pure branch selector for `content` — decides which view the section renders. Location
-    /// denial wins over every other state (UX-DR12): without Location access the list can never
-    /// populate, so the scanning / empty / list states are moot. Unit-tested directly without
+    /// Pure branch selector for `content` — decides which view the section renders. Power-off wins
+    /// over everything (FR34: nothing to scan or show when the radio is off). Then Location denial
+    /// (UX-DR12: without Location access the list can never populate). Unit-tested directly without
     /// instantiating SwiftUI (mirrors `displayedNetworks`).
     static func contentMode(
         locationDenied: Bool,
@@ -124,9 +144,10 @@ struct WiFiSection: View {
         isWiFiEnabled: Bool,
         isWiFiHardwareAvailable: Bool
     ) -> ContentMode {
+        if !isWiFiEnabled { return .wifiOff }
         if locationDenied { return .locationDenied }
         if isEmpty && isScanning { return .scanning }
-        if isEmpty && isWiFiEnabled && isWiFiHardwareAvailable && !isScanning { return .empty }
+        if isEmpty && isWiFiHardwareAvailable && !isScanning { return .empty }
         return .list
     }
 

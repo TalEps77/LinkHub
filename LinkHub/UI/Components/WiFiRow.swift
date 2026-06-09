@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// A single Wi-Fi network row.
 ///
@@ -163,6 +164,11 @@ struct WiFiRow: View {
             // StatusItemController on the connectedWifi state edge, keeping NSAccessibility in the
             // AppKit layer and WiFiRow SwiftUI-only (NFR35, Story 1.4 layer rule).
             collapse()
+            // FR33 / NFR22: captive networks hand off to the user's default browser for sign-in —
+            // no in-app webview. Mirrors LocationDeniedView's NSWorkspace handoff precedent.
+            if network.isCaptive {
+                NSWorkspace.shared.open(Self.captivePortalURL)
+            }
         case .failure(let failure):
             // UX-DR31: clear the field, keep focus, stay expanded, show the cause.
             errorCaption = Self.errorCaption(for: failure)
@@ -175,6 +181,10 @@ struct WiFiRow: View {
     }
 
     // MARK: - Pure, testable helpers
+
+    /// Apple's captive-portal probe host (FR33). Opening it in the default browser triggers the
+    /// network's sign-in page. Exposed as a `static` constant so the URL is unit-testable.
+    static let captivePortalURL = URL(string: "http://captive.apple.com")!
 
     /// Cause-typed failure → user-facing caption (UX-DR30/34). Pure & static for unit testing.
     static func errorCaption(for failure: WiFiConnectionFailure) -> String {

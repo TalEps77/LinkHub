@@ -56,7 +56,7 @@ development_status:
   2-2-keychainservice-persist-wi-fi-passwords: done
   2-3-wifirow-expanded-state-inline-password-error-caption: done
   2-4-othernetworkpanel-hidden-network-connect: done
-  2-5-wi-fi-power-toggle-captive-portal-handoff: backlog
+  2-5-wi-fi-power-toggle-captive-portal-handoff: done
   2-6-forget-network-open-wi-fi-settings-handoffs: backlog
   epic-2-retrospective: optional
 
