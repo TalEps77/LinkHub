@@ -242,6 +242,21 @@ final class AppStateTests: XCTestCase {
     }
 
     @MainActor
+    func testIsRememberedFalseForHiddenNetwork() {
+        // Story 2.6: a nil/empty SSID is never "known" (no stable Keychain account) — no menu.
+        let state = AppState(wifiMonitor: StubWiFiMonitor())
+        let hidden = WiFiNetwork(id: "h", ssid: nil, bssid: "h", rssi: -70, isConnected: false, requiresPassword: true, security: .wpa3Personal, isCaptive: false)
+        XCTAssertFalse(state.isRemembered(hidden))
+    }
+
+    @MainActor
+    func testForgetUnknownSSIDDoesNotThrow() {
+        // Forgetting a network LinkHub never stored is a no-op (errSecItemNotFound treated as success).
+        let state = AppState(wifiMonitor: StubWiFiMonitor())
+        state.forget(ssid: "NeverStored-\(UUID().uuidString)")
+    }
+
+    @MainActor
     func testSetWiFiPowerForwardsToMonitor() async {
         let stub = StubWiFiMonitor()
         let state = AppState(wifiMonitor: stub)

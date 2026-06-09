@@ -13,6 +13,9 @@ struct WiFiSection: View {
     /// defaults to a no-op so the section renders standalone in previews/tests. Using the
     /// environment action (not a closure through `init`) keeps `WiFiSection`'s API stable.
     @Environment(\.showOtherNetwork) private var showOtherNetwork
+    /// Dismisses the popover before the System Settings handoff (Story 2.6). Injected by
+    /// `PopoverController`; defaults to a no-op in previews/tests.
+    @Environment(\.dismissPopover) private var dismissPopover
 
     /// Drives the header power `Toggle` (Story 2.5). Reads the live power state from the monitor's
     /// `isWiFiEnabled` (no local `@State` to drift from reality); the setter routes through
@@ -28,11 +31,11 @@ struct WiFiSection: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             content
-            // "Other Network…" footer (Story 2.4). Hidden when the list itself is hidden — i.e.
-            // location-denied (LocationDeniedView) or Wi-Fi off. The "Open Network Settings…"
-            // footer link is Story 2.6 — not added here.
+            // Footers (Story 2.4 "Other Network…", Story 2.6 "Open Network Settings…"). Hidden
+            // when the list itself is hidden — i.e. location-denied (LocationDeniedView) or Wi-Fi off.
             if !appState.wifiLocationDenied && appState.networkState.isWiFiEnabled {
                 otherNetworkFooter
+                openSettingsFooter
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -49,6 +52,22 @@ struct WiFiSection: View {
             .padding(.horizontal, PanelLayout.rowHorizontalPadding)
             .padding(.vertical, PanelLayout.rowVerticalPadding)
             .accessibilityLabel("Other Network")
+    }
+
+    /// A `.plain` footer link (UX-DR34 ellipsis copy) that hands off to the system Wi-Fi settings
+    /// pane (FR38). Dismisses the popover first so the settings window comes forward (UX-DR32).
+    private var openSettingsFooter: some View {
+        Button("Open Network Settings…") {
+            dismissPopover()
+            SystemSettingsService.openWiFiSettings()
+        }
+        .buttonStyle(.plain)
+        .font(.body)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .padding(.horizontal, PanelLayout.rowHorizontalPadding)
+        .padding(.vertical, PanelLayout.rowVerticalPadding)
+        .accessibilityLabel("Open Network Settings")
     }
 
     private var header: some View {

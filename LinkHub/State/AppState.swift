@@ -141,6 +141,26 @@ final class AppState: ObservableObject {
         await wifiMonitor.setPowered(on)
     }
 
+    /// LinkHub's notion of a "known" network (Story 2.6): one whose passphrase LinkHub has stored
+    /// in the Keychain. This is the only known-set computable without private API; it gates the
+    /// row context menu so unknown networks show no menu. Hidden / nil-SSID networks are never
+    /// "known" here.
+    func isRemembered(_ network: WiFiNetwork) -> Bool {
+        guard let ssid = network.ssid, !ssid.isEmpty else { return false }
+        return KeychainService.password(forSSID: ssid) != nil
+    }
+
+    /// Forgets LinkHub's stored passphrase for `ssid` (Story 2.6 "Forget"). The *system*
+    /// known-network entry is managed by the user in System Settings (UX-DR32) — LinkHub does not
+    /// remove it. A Keychain removal failure is logged, not surfaced (the handoff still proceeds).
+    func forget(ssid: String) {
+        do {
+            try KeychainService.remove(forSSID: ssid)
+        } catch {
+            Log.servicesKeychain.error("Keychain remove failed on Forget: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     private func rebuildState(
         networks: [WiFiNetwork],
         connected: WiFiNetwork?,

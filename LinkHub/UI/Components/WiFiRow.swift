@@ -23,6 +23,9 @@ struct WiFiRow: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion: Bool
+    /// Dismisses the popover before a System Settings handoff (Story 2.6). Injected by
+    /// `PopoverController`; defaults to a no-op in previews/tests.
+    @Environment(\.dismissPopover) private var dismissPopover
 
     /// Whether the inline password field is shown. Local — see type doc.
     @State private var isExpanded = false
@@ -34,7 +37,18 @@ struct WiFiRow: View {
     /// `true` while this row's connection attempt is in flight (drives the `.connecting` visual).
     private var isConnecting: Bool { appState.connectingNetworkID == network.id }
 
+    @ViewBuilder
     var body: some View {
+        // Story 2.6: the Forget / Open-in-Settings context menu is attached only to "known"
+        // (LinkHub-remembered) networks; unknown rows show no menu (UX-DR36).
+        if appState.isRemembered(network) {
+            rowBody.contextMenu { contextMenuItems }
+        } else {
+            rowBody
+        }
+    }
+
+    private var rowBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             mainRow
             if isExpanded {
@@ -45,6 +59,27 @@ struct WiFiRow: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: isExpanded)
         .contentShape(Rectangle())
         .onTapGesture { handleTap() }
+    }
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        Button("Forget") { forget() }
+        Button("Open in Settings") { openInSettings() }
+    }
+
+    /// FR36 / UX-DR32: clear LinkHub's stored passphrase, dismiss the popover, hand off to the
+    /// system Wi-Fi settings pane (which owns the system known-network entry).
+    private func forget() {
+        if let ssid = network.ssid, !ssid.isEmpty {
+            appState.forget(ssid: ssid)
+        }
+        dismissPopover()
+        SystemSettingsService.openWiFiSettings()
+    }
+
+    private func openInSettings() {
+        dismissPopover()
+        SystemSettingsService.openWiFiSettings()
     }
 
     // MARK: - Main row
