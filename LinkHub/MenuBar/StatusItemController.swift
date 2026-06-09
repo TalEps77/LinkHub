@@ -15,6 +15,9 @@ final class StatusItemController {
     /// Tracks Wi-Fi power so a true↔false flip posts the "Wi-Fi turned on/off" announcement
     /// (UX-DR25). `nil` until the first emission so cold launch does not announce.
     private var previousWiFiEnabled: Bool? = nil
+    /// Tracks Ethernet-active so a transition posts "Ethernet connected/disconnected" (Story 3.5,
+    /// UX-DR25/FR58). `nil` until the first emission so cold launch does not announce.
+    private var previousEthernetActive: Bool? = nil
     /// Tracks the connected Wi-Fi network id to announce "Connected to {SSID}" on a new
     /// association (Story 2.3, UX-DR25). `false` until the first emission so a cold launch that is
     /// already connected does not announce.
@@ -58,6 +61,7 @@ final class StatusItemController {
                 self.updateTooltip(for: state)
                 self.announceIfDisconnected(for: state)
                 self.announceWiFiPowerChange(for: state)
+                self.announceEthernetTransition(for: state)
                 self.announceConnectionIfNew(for: state)
                 self.announceNetworksLoadingIfPending()
             }
@@ -187,6 +191,15 @@ final class StatusItemController {
         defer { previousWiFiEnabled = state.isWiFiEnabled }
         guard let prev = previousWiFiEnabled, prev != state.isWiFiEnabled else { return }
         postAnnouncement(state.isWiFiEnabled ? "Wi-Fi turned on" : "Wi-Fi turned off")
+    }
+
+    /// Story 3.5 (UX-DR25, FR58): announce the cable moment on a transition to/from Ethernet-active.
+    /// Skips the first emission so a cold launch already on Ethernet does not announce.
+    private func announceEthernetTransition(for state: NetworkState) {
+        let isEthernet = state.mode == .ethernetActive
+        defer { previousEthernetActive = isEthernet }
+        guard let prev = previousEthernetActive, prev != isEthernet else { return }
+        postAnnouncement(isEthernet ? "Ethernet connected" : "Ethernet disconnected")
     }
 
     /// UX-DR25: after the user grants Location following a denial, the next scan completion posts

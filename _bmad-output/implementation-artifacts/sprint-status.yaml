@@ -65,7 +65,7 @@ development_status:
   3-2-appstate-dual-monitor-sink-refactor: done
   3-3-ethernetsection-ethernetrow-with-four-states: done
   3-4-statusbaricon-ethernet-path-300-ms-crossfade: done
-  3-5-cable-out-1-5-s-grace-section-reorder-animation: backlog
+  3-5-cable-out-1-5-s-grace-section-reorder-animation: done
   3-6-multi-ethernet-enumeration-overflow-row-voiceover-and-resource-baseline: backlog
   epic-3-retrospective: optional
 

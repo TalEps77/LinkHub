@@ -11,6 +11,11 @@ final class AppState: ObservableObject {
     /// Single source of truth so concurrent taps cannot light up two rows at once.
     @Published private(set) var connectingNetworkID: String?
     @Published var wifiLocationDenied: Bool = false
+    /// Whether the Ethernet section should be visible (Story 3.5). Driven by the cable-out grace:
+    /// `true` while any interface has link, and held `true` for a 1.5 s grace window after the last
+    /// link is lost so transient dock/cable flutter doesn't flicker the UI (FR13). The View reads
+    /// this (not the raw interface list) to decide whether to render `EthernetSection`.
+    @Published private(set) var isEthernetSectionVisible: Bool = false
     @Published var launchAtLogin: Bool {
         didSet {
             UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
@@ -22,6 +27,11 @@ final class AppState: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
     private var isStarted: Bool = false
+    /// In-flight 1.5 s grace timer that hides the Ethernet section after link loss. Cancelled if
+    /// link is restored within the window (no flicker). `nil` when no hide is pending.
+    private var ethernetHideTask: Task<Void, Never>?
+    /// Cable-out grace window (FR13). Injectable so tests can shrink it; defaults to 1.5 s.
+    private let ethernetGraceNanoseconds: UInt64
 
     convenience init() {
         self.init(wifiMonitor: WiFiMonitor(), ethernetMonitor: EthernetMonitor())
@@ -33,9 +43,14 @@ final class AppState: ObservableObject {
         self.init(wifiMonitor: wifiMonitor, ethernetMonitor: EthernetMonitor())
     }
 
-    init(wifiMonitor: any WiFiMonitorProtocol, ethernetMonitor: any EthernetMonitorProtocol) {
+    init(
+        wifiMonitor: any WiFiMonitorProtocol,
+        ethernetMonitor: any EthernetMonitorProtocol,
+        ethernetGraceNanoseconds: UInt64 = 1_500_000_000
+    ) {
         self.wifiMonitor = wifiMonitor
         self.ethernetMonitor = ethernetMonitor
+        self.ethernetGraceNanoseconds = ethernetGraceNanoseconds
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         // Derive connectionMode from networkState.mode so the two cannot diverge across
         // separate emissions. Bound to AppState lifetime via assign(to:).
@@ -104,8 +119,41 @@ final class AppState: ObservableObject {
         wifiMonitor.stop()
         ethernetMonitor.stop()
         cancellables.removeAll()
+        ethernetHideTask?.cancel()
+        ethernetHideTask = nil
         isStarted = false
     }
+
+    /// Applies the Story 3.5 cable-out grace to `isEthernetSectionVisible`. Called on every state
+    /// rebuild. When link is present, the section is visible immediately and any pending hide is
+    /// cancelled. When the last link is lost while the section is visible, a 1.5 s one-shot timer
+    /// hides it — re-checking link at fire time so a reconnect within the window leaves it visible
+    /// (FR13). No polling: a single cancellable `Task.sleep`, not a repeating timer (NFR50).
+    private func updateEthernetVisibility(hasLink: Bool) {
+        if hasLink {
+            ethernetHideTask?.cancel()
+            ethernetHideTask = nil
+            if !isEthernetSectionVisible { isEthernetSectionVisible = true }
+        } else if isEthernetSectionVisible, ethernetHideTask == nil {
+            let grace = ethernetGraceNanoseconds
+            ethernetHideTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: grace)
+                guard let self, !Task.isCancelled else { return }
+                // Only hide if link is still absent after the grace window.
+                if !self.networkState.ethernetInterfaces.contains(where: { $0.state != .noLink }) {
+                    self.isEthernetSectionVisible = false
+                }
+                self.ethernetHideTask = nil
+            }
+        }
+    }
+
+    #if DEBUG
+    /// Test seam: drives the cable-out grace state machine directly without the Combine pipeline.
+    func _updateEthernetVisibilityForTesting(hasLink: Bool) {
+        updateEthernetVisibility(hasLink: hasLink)
+    }
+    #endif
 
     /// Connection orchestration (NFR35 — the View never calls `associate`/Keychain directly).
     ///
@@ -197,6 +245,8 @@ final class AppState: ObservableObject {
             isWiFiEnabled: isEnabled,
             isWiFiHardwareAvailable: isHardwareAvailable
         )
+        // Story 3.5: drive the graced Ethernet-section visibility off the same atomic rebuild.
+        updateEthernetVisibility(hasLink: ethernet.contains { $0.state != .noLink })
     }
 
     private func computeConnectionMode(ethernet: [EthernetInterface], wifi: WiFiNetwork?) -> ConnectionMode {

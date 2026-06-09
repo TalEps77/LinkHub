@@ -277,6 +277,45 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(state.networkState.ethernetInterfaces.isEmpty)
     }
 
+    #if DEBUG
+    @MainActor
+    private func graceTestState() -> AppState {
+        AppState(
+            wifiMonitor: MockWiFiMonitor(),
+            ethernetMonitor: MockEthernetMonitor(interfaces: []),
+            ethernetGraceNanoseconds: 60_000_000 // 60 ms grace for fast tests
+        )
+    }
+
+    @MainActor
+    func testEthernetSectionVisibleImmediatelyOnLink() {
+        let state = graceTestState()
+        state._updateEthernetVisibilityForTesting(hasLink: true)
+        XCTAssertTrue(state.isEthernetSectionVisible)
+    }
+
+    @MainActor
+    func testEthernetGraceKeepsVisibleThenHidesAfterWindow() async {
+        let state = graceTestState()
+        state._updateEthernetVisibilityForTesting(hasLink: true)
+        state._updateEthernetVisibilityForTesting(hasLink: false)
+        // Within the grace window the section is still visible (FR13 — no flicker).
+        XCTAssertTrue(state.isEthernetSectionVisible)
+        try? await Task.sleep(nanoseconds: 150_000_000) // > 60 ms grace
+        XCTAssertFalse(state.isEthernetSectionVisible, "section hides after the grace window")
+    }
+
+    @MainActor
+    func testEthernetLinkRestoredWithinGraceStaysVisible() async {
+        let state = graceTestState()
+        state._updateEthernetVisibilityForTesting(hasLink: true)
+        state._updateEthernetVisibilityForTesting(hasLink: false) // arm hide
+        state._updateEthernetVisibilityForTesting(hasLink: true)  // restore before window
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertTrue(state.isEthernetSectionVisible, "reconnect within grace cancels the hide")
+    }
+    #endif
+
     @MainActor
     func testSetWiFiPowerForwardsToMonitor() async {
         let stub = StubWiFiMonitor()

@@ -18,6 +18,9 @@ struct RootPanelView: View {
             // WiFiSection API stays stable (no closure threaded through its init).
             .environment(\.showOtherNetwork) { showingOtherNetwork = true }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: showingOtherNetwork)
+            // Story 3.5: 250 ms ease-in-out section reorder when the Ethernet section appears /
+            // disappears; instant under Reduce Motion (UX-DR9/17/20, NFR28).
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: appState.isEthernetSectionVisible)
     }
 
     @ViewBuilder
@@ -26,12 +29,11 @@ struct RootPanelView: View {
             OtherNetworkPanel(onClose: { showingOtherNetwork = false })
         } else {
             VStack(spacing: PanelLayout.interSectionSpacing) {
-                // Story 3.3: EthernetSection renders above WiFiSection when ≥1 interface HAS LINK
-                // (FR12, UX-DR9/10). EthernetMonitor enumerates all hardware interfaces — including
-                // cable-out `.noLink` ones — so the predicate must be "has link" (any state other
-                // than .noLink), not merely non-empty. The 250 ms section-reorder animation +
-                // cable-out 1.5 s grace timer are Story 3.5 — not added here.
-                if appState.networkState.ethernetInterfaces.contains(where: { $0.state != .noLink }) {
+                // Story 3.3: EthernetSection renders above WiFiSection. Story 3.5: visibility is the
+                // graced `appState.isEthernetSectionVisible` (true while any interface has link, held
+                // for a 1.5 s window after cable-out so transient flutter doesn't flicker, FR13) —
+                // not the raw interface list.
+                if appState.isEthernetSectionVisible {
                     EthernetSection()
                 }
                 WiFiSection()
