@@ -18,16 +18,24 @@ final class AppState: ObservableObject {
     }
 
     let wifiMonitor: any WiFiMonitorProtocol
+    let ethernetMonitor: any EthernetMonitorProtocol
 
     private var cancellables: Set<AnyCancellable> = []
     private var isStarted: Bool = false
 
     convenience init() {
-        self.init(wifiMonitor: WiFiMonitor())
+        self.init(wifiMonitor: WiFiMonitor(), ethernetMonitor: EthernetMonitor())
     }
 
-    init(wifiMonitor: any WiFiMonitorProtocol) {
+    /// Backward-compatible convenience for call sites (and tests/previews) that only inject a
+    /// Wi-Fi monitor; the Ethernet monitor defaults to the real `EthernetMonitor` (Story 3.2).
+    convenience init(wifiMonitor: any WiFiMonitorProtocol) {
+        self.init(wifiMonitor: wifiMonitor, ethernetMonitor: EthernetMonitor())
+    }
+
+    init(wifiMonitor: any WiFiMonitorProtocol, ethernetMonitor: any EthernetMonitorProtocol) {
         self.wifiMonitor = wifiMonitor
+        self.ethernetMonitor = ethernetMonitor
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         // Derive connectionMode from networkState.mode so the two cannot diverge across
         // separate emissions. Bound to AppState lifetime via assign(to:).
@@ -38,6 +46,7 @@ final class AppState: ObservableObject {
         guard !isStarted else { return }
         isStarted = true
         wifiMonitor.start()
+        ethernetMonitor.start()
 
         // Use sink (not assign(to: &$scanStatus)) so stopMonitors can sever the mirror via
         // cancellables.removeAll(). assign(to:) binds to the @Published lifetime instead.
@@ -60,33 +69,40 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest4(
+        // Story 3.2: combine the Ethernet + Wi-Fi streams so `networkState` and `connectionMode`
+        // are always rebuilt atomically in one write — no Epic-2 connect/disconnect path can see a
+        // transient (ethernet, wifi) mismatch. CombineLatest takes 2 publishers (the Wi-Fi 4-tuple
+        // is itself a nested CombineLatest4); both must emit once before the first combined tick,
+        // which they do (every `@Published` emits its current value on subscription).
+        let wifiCombined = Publishers.CombineLatest4(
             wifiMonitor.networksPublisher,
             wifiMonitor.connectedNetworkPublisher,
             wifiMonitor.isEnabledPublisher,
             wifiMonitor.isHardwareAvailablePublisher
         )
-        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-        .sink { [weak self] networks, connected, isEnabled, isHardwareAvailable in
-            // Sink delivers on DispatchQueue.main, which under Swift 6 is not MainActor
-            // isolation; hop via Task { @MainActor }. Cooperative-scheduling FIFO ordering is
-            // not strictly guaranteed here, but subsequent emissions go through the same
-            // 300 ms debounce — out-of-order rebuilds across two debounced ticks are
-            // bounded to the rebuilt-state shape and converge on the latest snapshot.
-            Task { @MainActor [weak self] in
-                self?.rebuildState(
-                    networks: networks,
-                    connected: connected,
-                    isEnabled: isEnabled,
-                    isHardwareAvailable: isHardwareAvailable
-                )
+        Publishers.CombineLatest(ethernetMonitor.interfacesPublisher, wifiCombined)
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] ethernet, wifi in
+                let (networks, connected, isEnabled, isHardwareAvailable) = wifi
+                // Sink delivers on DispatchQueue.main, which under Swift 6 is not MainActor
+                // isolation; hop via Task { @MainActor }. Subsequent emissions go through the same
+                // 300 ms debounce and converge on the latest snapshot.
+                Task { @MainActor [weak self] in
+                    self?.rebuildState(
+                        ethernet: ethernet,
+                        networks: networks,
+                        connected: connected,
+                        isEnabled: isEnabled,
+                        isHardwareAvailable: isHardwareAvailable
+                    )
+                }
             }
-        }
-        .store(in: &cancellables)
+            .store(in: &cancellables)
     }
 
     func stopMonitors() {
         wifiMonitor.stop()
+        ethernetMonitor.stop()
         cancellables.removeAll()
         isStarted = false
     }
@@ -162,18 +178,20 @@ final class AppState: ObservableObject {
     }
 
     private func rebuildState(
+        ethernet: [EthernetInterface],
         networks: [WiFiNetwork],
         connected: WiFiNetwork?,
         isEnabled: Bool,
         isHardwareAvailable: Bool
     ) {
-        let mode = computeConnectionMode(ethernet: [], wifi: connected)
-        // Single write — connectionMode mirrors via the init pipeline, so observers cannot
-        // see a transient (mode, networkState) mismatch across two @Published emissions.
+        let mode = computeConnectionMode(ethernet: ethernet, wifi: connected)
+        // Primary = the first active interface (Story 3.3/3.6 refine sort/overflow). Single write —
+        // connectionMode mirrors via the init pipeline, so observers cannot see a transient
+        // (mode, networkState) mismatch across two @Published emissions.
         self.networkState = NetworkState(
             mode: mode,
-            ethernetInterfaces: [],
-            primaryEthernet: nil,
+            ethernetInterfaces: ethernet,
+            primaryEthernet: ethernet.first(where: \.isActive),
             wifiNetworks: networks,
             connectedWifi: connected,
             isWiFiEnabled: isEnabled,

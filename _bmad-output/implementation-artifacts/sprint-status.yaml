@@ -62,7 +62,7 @@ development_status:
 
   epic-3: in-progress
   3-1-ethernetmonitor-scdynamicstore-sendable-extraction: done
-  3-2-appstate-dual-monitor-sink-refactor: backlog
+  3-2-appstate-dual-monitor-sink-refactor: done
   3-3-ethernetsection-ethernetrow-with-four-states: backlog
   3-4-statusbaricon-ethernet-path-300-ms-crossfade: backlog
   3-5-cable-out-1-5-s-grace-section-reorder-animation: backlog

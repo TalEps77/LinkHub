@@ -257,6 +257,27 @@ final class AppStateTests: XCTestCase {
     }
 
     @MainActor
+    func testDualMonitorRebuildsEthernetActiveAtomically() async {
+        // Story 3.2: an active Ethernet interface drives connectionMode == .ethernetActive and
+        // populates ethernetInterfaces + primaryEthernet in a single networkState write, even with
+        // Wi-Fi also connected (Ethernet wins per computeConnectionMode).
+        let wifi = MockWiFiMonitor()                                   // seeds a connected Wi-Fi network
+        let eth = MockEthernetMonitor(interfaces: [])
+        let state = AppState(wifiMonitor: wifi, ethernetMonitor: eth)
+        state.startMonitors()
+        defer { state.stopMonitors() }
+
+        eth.interfaces = MockEthernetMonitor.sampleInterfaces           // contains an .active en3
+        // Wait out the 300 ms debounce.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertEqual(state.networkState.mode, .ethernetActive)
+        XCTAssertEqual(state.connectionMode, .ethernetActive)
+        XCTAssertEqual(state.networkState.primaryEthernet?.bsdName, "en3")
+        XCTAssertFalse(state.networkState.ethernetInterfaces.isEmpty)
+    }
+
+    @MainActor
     func testSetWiFiPowerForwardsToMonitor() async {
         let stub = StubWiFiMonitor()
         let state = AppState(wifiMonitor: stub)
